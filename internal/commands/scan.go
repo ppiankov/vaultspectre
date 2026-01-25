@@ -48,8 +48,8 @@ func init() {
 	scanCmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Path to Vault audit log file (optional, for access-based staleness)")
 	scanCmd.Flags().IntVar(&auditWindowDays, "audit-window-days", 90, "Days to look back in audit logs")
 
-	scanCmd.MarkFlagRequired("vault-addr")
-	scanCmd.MarkFlagRequired("token")
+	_ = scanCmd.MarkFlagRequired("vault-addr")
+	_ = scanCmd.MarkFlagRequired("token")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
