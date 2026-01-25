@@ -118,13 +118,6 @@ func (v *Validator) CheckStaleness(path string, thresholdDays int) (bool, string
 	return isStale, timeStr, nil
 }
 
-func (v *Validator) checkMetadataTimestamp(path string, thresholdDays int) (bool, string, error) {
-	// This is a fallback method for KV v1 or when we can't get KV v2 metadata
-	// In a real implementation, you might want to use audit logs here
-	// For MVP, we'll just return false (not stale) if we can't determine
-	return false, "", nil
-}
-
 // parseKVv2Path attempts to parse a KV v2 path into mount and secret path
 // e.g., "secret/data/prod/api/key" -> ("secret", "prod/api/key")
 func parseKVv2Path(fullPath string) (string, string) {
