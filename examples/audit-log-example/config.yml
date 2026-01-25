@@ -1,0 +1,5 @@
+vault_secrets:
+  daily_key: secret/data/active-daily
+  weekly_key: secret/data/active-weekly
+  old_key: secret/data/old-modified
+  unused_key: secret/data/never-accessed

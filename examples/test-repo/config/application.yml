@@ -1,0 +1,8 @@
+application:
+  name: myapp
+  database:
+    vault_path: "secret/data/prod/database/credentials"
+  api:
+    secret_path: "secret/data/prod/api/token"
+  cache:
+    vault_path: "secret/data/prod/redis/password"

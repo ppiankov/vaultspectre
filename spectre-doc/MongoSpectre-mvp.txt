@@ -1,0 +1,225 @@
+Here you go, raccoon of the cloud underworld — the MVP text for S3Spectre, written in the same “professional-but-haunted” tone as the others.
+Drop this right into the docs/README.md or README header.
+
+⸻
+
+🟣 S3Spectre — MVP Overview
+
+S3Spectre is a Python-based static + runtime auditor for AWS S3 usage.
+It scans your code/config repository to identify which buckets, prefixes, and versioned object paths your applications reference.
+It then compares that against the actual state of your AWS S3 environment to detect:
+	•	missing buckets
+	•	unused buckets
+	•	orphaned prefixes
+	•	stale objects
+	•	suspicious or excessive versioning
+	•	abandoned archives
+	•	misconfigured lifecycle policies
+
+S3Spectre helps teams clean up years of storage cruft and prevent broken deployments or costly zombie-storage bills.
+
+⸻
+
+✨ S3Spectre — MVP Features
+
+1️⃣ Repo Scanner (Static S3 Reference Extraction)
+
+Scan the repo for references to:
+	•	bucket names (my-app-data, prod-logs, etc.)
+	•	S3 URIs:
+	•	s3://bucket/path/file.json
+	•	https://bucket.s3.amazonaws.com/path/file
+	•	Terraform variables:
+	•	aws_s3_bucket
+	•	aws_s3_bucket_object
+	•	CloudFormation templates
+	•	Python/Node/Go code using AWS SDKs
+	•	.env or config files containing bucket configs
+	•	versioned object keys such as:
+	•	path/to/object?versionId=...
+
+Extract:
+	•	bucket
+	•	prefix/object
+	•	version ID (if present)
+	•	file + line number
+	•	usage context (download, upload, list, backup, etc.)
+
+Produces a set of RepoS3Ref objects.
+
+⸻
+
+2️⃣ AWS S3 Inspector (Live Metadata)
+
+Using boto3, S3Spectre queries:
+
+Buckets:
+	•	existence
+	•	creation time
+	•	region
+	•	versioning status
+	•	lifecycle rules
+	•	policy / ACL access (read-only checks)
+
+Objects (shallow scan for MVP):
+	•	prefix existence
+	•	object count
+	•	last modified
+	•	version count (if versioning enabled)
+	•	storage class
+	•	approximate size
+
+This gives you a snapshot of what actually exists in S3.
+
+⸻
+
+3️⃣ Analyzer / Diff Engine
+
+Matches repo usage → real storage state.
+
+Flags:
+
+✔️ MISSING_BUCKET
+
+Referenced in repo but doesn’t exist in AWS.
+
+✔️ UNUSED_BUCKET
+
+Exists in AWS but:
+	•	not referenced in repo,
+	•	and no objects or no recent access (optional),
+	•	or clearly abandoned from old systems.
+
+✔️ MISSING_PREFIX
+
+Repo expects a path like s3://mybucket/data/exports/, but AWS has no such prefix or objects.
+
+✔️ STALE_OBJECTS
+
+Large or important prefixes where:
+	•	objects haven’t changed in N days
+	•	possibly indicating retired features or unmaintained backups
+
+✔️ VERSIONED_OBJECT_SPRAWL
+
+If versioning is enabled and S3 contains:
+	•	huge amounts of old, unused versions
+	•	buckets with versioning turned on but no lifecycle rules
+	•	versioned objects referenced explicitly in code (very suspicious)
+
+✔️ LIFECYCLE_MISCONFIG
+
+Buckets storing logs/backups without:
+	•	expiration
+	•	transition rules
+	•	archival policies
+
+✔️ OK
+
+Everything matches usage (rare in real life).
+
+⸻
+
+4️⃣ Reporter (Text + JSON)
+
+Text-mode:
+
+[MISSING_BUCKET]      s3://legacy-data
+[MISSING_PREFIX]      s3://prod-logs/app1/
+[STALE_OBJECTS]       s3://backups/db/  (last update 2022-01-03)
+[VERSION_SPRAWL]      s3://assets/prod/  (532 versions, no lifecycle rule)
+[UNUSED_BUCKET]       s3://old-service-artifacts
+[OK]                  s3://customer-data
+
+JSON-mode:
+
+{
+  "missing_bucket": ["legacy-data"],
+  "missing_prefix": ["prod-logs/app1/"],
+  "stale": ["backups/db/"],
+  "version_sprawl": ["assets/prod/"],
+  "unused": ["old-service-artifacts"],
+  "ok": ["customer-data"]
+}
+
+Supports CI/CD flags:
+	•	--fail-on-missing
+	•	--fail-on-stale
+	•	--fail-on-version-sprawl
+
+⸻
+
+5️⃣ CLI Command (MVP)
+
+Just one command is enough:
+
+s3spectre check \
+  --repo ./project \
+  --aws-profile prod \
+  --json
+
+Or using AWS env vars:
+
+s3spectre check --repo ./repo --json
+
+Exit codes:
+	•	1 → missing bucket
+	•	2 → missing prefix
+	•	3 → stale/version sprawl
+	•	0 → all good (lol, unlikely)
+
+⸻
+
+6️⃣ Project Structure (MVP)
+
+s3spectre/
+├── scanner/
+│   ├── regex_scanner.py
+│   ├── terraform_scanner.py
+│   ├── cloudformation_scanner.py
+├── s3/
+│   ├── inspector.py
+│   └── versioning.py
+├── analysis/
+│   └── analyzer.py
+├── report/
+│   ├── text_report.py
+│   └── json_report.py
+├── cli.py
+└── pyproject.toml
+
+
+⸻
+
+🧠 MVP Scope (Keep It Small but Murderously Effective)
+
+Included:
+	•	detecting buckets in code
+	•	comparing to AWS bucket list
+	•	checking prefixes for existence
+	•	lightweight object metadata fetch
+	•	versioning sanity checks
+	•	lifecycle rule detection
+	•	stale-object basic detection
+	•	JSON + text report
+	•	s3spectre check command
+
+Excluded (future versions):
+	•	object-by-object deep scans
+	•	IAM policy simulation
+	•	encryption auditor
+	•	replication auditor
+	•	S3 access log analysis
+	•	cost estimation
+
+These can come in v0.2 or v0.3.
+
+⸻
+
+If you want, I can also generate:
+	•	README template
+	•	pyproject.toml skeleton
+	•	CLI stub
+	•	repository scaffolding
+
+Just grunt in raccoon dialect and I’ll drop it.

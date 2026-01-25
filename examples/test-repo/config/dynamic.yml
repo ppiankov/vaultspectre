@@ -1,0 +1,14 @@
+# Configuration with dynamic paths (common in real deployments)
+application:
+  name: myapp
+
+  # Dynamic environment-based paths
+  database:
+    vault_path: "secret/data/${ENVIRONMENT}/database/credentials"
+
+  api:
+    secret_path: "secret/data/{{ env }}/api/token"
+
+  # Dynamic service name
+  service_key:
+    vault_path: "secret/data/prod/$SERVICE_NAME/key"
