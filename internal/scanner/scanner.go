@@ -198,6 +198,6 @@ func isValidVaultPath(path string) bool {
 func isDynamicPath(path string) bool {
 	// Check for template variables
 	return strings.Contains(path, "{{") ||
-	       strings.Contains(path, "${") ||
-	       strings.Contains(path, "$")
+		strings.Contains(path, "${") ||
+		strings.Contains(path, "$")
 }

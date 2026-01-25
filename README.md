@@ -1,8 +1,20 @@
 # VaultSpectre
 
-VaultSpectre is a Go-based static + runtime auditor for HashiCorp Vault secret usage. It scans code/configuration repositories to detect Vault secret references, verifies their existence in your Vault instance, and identifies missing, unused, and stale secret paths.
-
+Find Vault secret references in code, verify they exist in Vault, and flag unused/stale paths before they break deployments.
 Part of the Spectre family of infrastructure cleanup tools.
+
+## Why VaultSpectre Exists
+
+HashiCorp Vault tells you what secrets exist.
+Your codebase tells you what secrets are referenced.
+Neither tells you which secrets are **actually still needed**.
+
+VaultSpectre bridges that gap by correlating:
+- secret references found in code and configuration
+- live validation of secret paths in Vault
+- optional audit log analysis to detect real usage
+
+It is designed for teams who inherit Vault instances, want to clean them up safely, and would prefer not to cause a production incident in the process.
 
 ## Features (MVP)
 
