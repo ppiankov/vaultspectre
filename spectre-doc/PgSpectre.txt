@@ -1,0 +1,243 @@
+Alright, raccoon oracle, here is your PgSpectre MVP plan and the GitHub repo description — crisp, practical, spooky, and matching the Spectre family aesthetic.
+
+You are now officially building a database necromancer.
+
+⸻
+
+🟣 PgSpectre — GitHub Repository Description (Short)
+
+Use this as your GitHub repo tagline:
+
+Static + runtime PostgreSQL auditor. Scans codebases for table/column/query usage, compares with live Postgres schema & statistics, detects unused tables, unused indexes, schema drift, and unindexed queries.
+
+⸻
+
+🟣 PgSpectre — GitHub Long Description (for README intro)
+
+PgSpectre uncovers ghosts in your PostgreSQL database.
+
+It scans your code/config repository to detect which tables, columns, and query patterns your application actually uses.
+It then compares these findings against your live PostgreSQL database to identify:
+	•	tables referenced in code but missing in DB
+	•	tables existing in DB but no longer used
+	•	unused or never-scanned indexes
+	•	schema drift (fields missing or wrong types)
+	•	unindexed common query patterns
+	•	collections—sorry, tables—that haven’t been touched in years
+
+PgSpectre produces cleanup reports and CI/CD validation results to help teams maintain healthy, performant, non-haunted PostgreSQL instances.
+
+⸻
+
+🟣 PgSpectre — MVP Plan
+
+Here’s the minimal but powerful shape PgSpectre needs to take to be useful fast.
+
+⸻
+
+1️⃣ Repo Scanner (Static Analysis)
+
+Goal: extract all Postgres-related usage from code.
+
+Scan for:
+	•	SQL strings:
+	•	SELECT ... FROM users
+	•	UPDATE orders SET ...
+	•	DELETE FROM sessions
+	•	ORM / migration references:
+	•	Django models
+	•	SQLAlchemy tables/columns
+	•	Prisma schemas (yes, some teams mix)
+	•	Knex migrations
+	•	Environment/config values defining DB usage
+	•	Migration files that define or drop tables
+
+Extract:
+	•	table names
+	•	column names
+	•	query patterns (columns used in WHERE/ORDER/GROUP BY)
+	•	file + line location
+
+This gives us a list of RepoSchemaRef objects:
+
+{
+  "table": "orders",
+  "columns": ["user_id", "status"],
+  "file": "services/orders/db.py",
+  "context": "SELECT"
+}
+
+
+⸻
+
+2️⃣ PostgreSQL Inspector (Runtime Metadata + Stats)
+
+Query pg_catalog and information_schema:
+	•	list of tables & views
+	•	list of columns + types
+	•	list of constraints
+	•	list of indexes
+	•	index definitions (pg_get_indexdef)
+	•	index usage stats (pg_stat_user_indexes)
+	•	table stats (pg_stat_all_tables):
+	•	seq_scan, idx_scan
+	•	row counts
+	•	last vacuum/analyze
+
+No superuser privileges needed.
+Just read-only catalog access.
+
+Produce ClusterSchema objects, e.g.:
+
+{
+  "table": "orders",
+  "columns": ["id", "user_id", "status", "created_at"],
+  "indexes": ["orders_pkey", "orders_user_id_idx"],
+  "unused_indexes": ["orders_status_idx"],
+  "seq_scan": 0,
+  "idx_scan": 120000
+}
+
+
+⸻
+
+3️⃣ Analyzer / Diff Engine
+
+Match repo usage → DB reality.
+
+PgSpectre flags:
+
+✔️ MISSING_TABLE
+
+Referenced in code but doesn’t exist in DB.
+
+✔️ UNUSED_TABLE
+
+Exists in DB but:
+	•	not referenced in repo
+	•	AND no reads/writes in pg_stat_all_tables
+
+✔️ SCHEMA_DRIFT
+
+Column mismatch:
+	•	repo expects column but DB doesn’t have it
+	•	repo expects type X but DB uses type Y
+
+✔️ UNUSED_INDEX
+
+idx_scan = 0 for a long time.
+
+✔️ UNINDEXED_QUERY
+
+Query uses columns that no index covers.
+
+Example: repo uses:
+
+SELECT * FROM orders WHERE user_id = ? AND status = ?;
+
+But DB has only:
+
+orders_user_id_idx
+
+→ missing compound index.
+
+✔️ OK
+
+Everything sane and normal (rare in the wild).
+
+⸻
+
+4️⃣ Reporter (Text + JSON)
+
+Human-readable:
+
+[MISSING_TABLE]   invoices_archive
+[UNUSED_TABLE]    sessions  (no scans, no writes in 180 days)
+[UNUSED_INDEX]    users_lower_email_idx (0 scans, size 220MB)
+[SCHEMA_DRIFT]    users.phone expected TEXT but DB has INTEGER
+[UNINDEXED]       orders(user_id,status) query missing compound index
+[OK]              customers
+
+JSON (for CI/CD):
+
+{
+  "missing": [...],
+  "unused_tables": [...],
+  "unused_indexes": [...],
+  "drift": [...],
+  "unindexed": [...],
+  "ok": [...]
+}
+
+Exit codes:
+	•	1 for missing tables
+	•	2 for drift
+	•	3 for unindexed queries
+	•	0 for all-clear (lol as if)
+
+⸻
+
+5️⃣ CLI MVP
+
+Just one command:
+
+pgspectre check \
+  --repo ./repo \
+  --db-url postgres://user:pass@host/dbname \
+  --json \
+  --fail-on-missing
+
+Minimal flags:
+	•	--repo
+	•	--db-url
+	•	--json
+	•	--fail-on-missing
+	•	--fail-on-drift
+	•	--fail-on-unindexed
+
+That’s it for MVP.
+
+⸻
+
+6️⃣ Project Structure (MVP)
+
+pgspectre/
+├── scanner/
+│   ├── sql_scanner.py
+│   ├── orm_scanner.py
+│   ├── regex_scanner.py
+├── postgres/
+│   ├── inspector.py
+│   ├── stats.py
+├── analysis/
+│   └── analyzer.py
+├── report/
+│   ├── text_report.py
+│   └── json_report.py
+├── cli.py
+├── pyproject.toml
+└── docs/
+    └── README.md
+
+
+⸻
+
+🧠 TL;DR
+
+Yes, PgSpectre is doable, useful, and fits your Spectre lineup perfectly:
+	•	VaultSpectre → secrets
+	•	KafkaSpectre → topics
+	•	MongoSpectre → documents + indexes
+	•	PgSpectre → tables + columns + indexes
+	•	S3Spectre → buckets + objects
+	•	ClickSpectre → already your OG gremlin
+
+You’re basically building the SpectreOps Suite without meaning to.
+
+If you want, I can now generate:
+	•	README template for PgSpectre
+	•	starter pyproject.toml
+	•	CLI boilerplate code
+	•	project skeleton generator
+
+Just squeak your next request, raccoon lord.

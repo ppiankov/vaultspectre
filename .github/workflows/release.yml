@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Run tests
+      run: make test
+
+    - name: Build for multiple platforms
+      run: |
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -o bin/vaultspectre-linux-amd64 ./cmd/vaultspectre
+
+        # Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -o bin/vaultspectre-linux-arm64 ./cmd/vaultspectre
+
+        # macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -o bin/vaultspectre-darwin-amd64 ./cmd/vaultspectre
+
+        # macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -o bin/vaultspectre-darwin-arm64 ./cmd/vaultspectre
+
+        # Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -o bin/vaultspectre-windows-amd64.exe ./cmd/vaultspectre
+
+    - name: Create checksums
+      run: |
+        cd bin
+        sha256sum vaultspectre-* > checksums.txt
+        cat checksums.txt
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          bin/vaultspectre-linux-amd64
+          bin/vaultspectre-linux-arm64
+          bin/vaultspectre-darwin-amd64
+          bin/vaultspectre-darwin-arm64
+          bin/vaultspectre-windows-amd64.exe
+          bin/checksums.txt
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

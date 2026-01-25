@@ -1,0 +1,241 @@
+Alright raccoon-king, here is the VaultSpectre README template, formatted just like the KafkaSpectre one — clean, professional, haunted, and ready to drop into:
+
+docs/README.md
+
+You can rename it docs/vaultspectre.md if you want to stay organized like a raccoon with labeled trash bins.
+
+⸻
+
+🟣 VaultSpectre — README Template (MVP Edition)
+
+(Put into docs/README.md inside your vaultspectre repo)
+
+⸻
+
+VaultSpectre
+
+VaultSpectre is a Python-based static + runtime auditor for HashiCorp Vault secret usage.
+It scans code/configuration repositories to detect Vault secret references, verifies their existence in your Vault instance, and identifies missing, unused, and stale secret paths.
+
+VaultSpectre helps you eliminate broken secret paths, clean up dead secrets, and enforce correct Vault usage across microservices, automation code, and CI/CD pipelines.
+
+⸻
+
+✨ Features (MVP)
+
+🔍 1. Repo Scanner (Static Secret Path Discovery)
+
+Finds Vault paths referenced in:
+	•	Ansible (hashi_vault, vault_kv2_get, etc.)
+	•	YAML configurations
+	•	Jinja templates
+	•	Python / Bash scripts
+	•	Terraform / Helm / Kustomize
+	•	Any arbitrary text file (regex fallback)
+
+Extracts:
+	•	secret path (mount + path)
+	•	optional field
+	•	location (file + line)
+	•	reference type (lookup, env var, template, etc.)
+
+⸻
+
+🔐 2. Vault Path Validator
+
+Supports KV v2 (primary target) and KV v1.
+
+Checks each discovered path via Vault API:
+	•	Does the secret exist?
+	•	Does the current token have permission?
+	•	Is the mount correct (kv1 vs kv2)?
+	•	Is the path valid or structurally broken?
+
+Classifies each path as:
+	•	OK — exists and accessible
+	•	MISSING — referenced in repo but not present in Vault
+	•	ACCESS_DENIED — likely exists, but no permission
+	•	INVALID — malformed or not resolvable
+	•	DYNAMIC — templated or variable-based (not statically verifiable)
+
+⸻
+
+🧠 3. Optional: Unused Secret Detection (Lightweight MVP)
+
+Uses:
+	•	Vault metadata timestamps (KV2 created_time/updated_time)
+	•	Audit log presence (if enabled)
+
+To flag:
+	•	secrets not referenced in repo anymore
+	•	secrets that haven’t been touched in N days
+	•	stale entries from deprecated services
+	•	paths kept for “just in case” since 2019 (we see you)
+
+⸻
+
+📝 4. Reporting
+
+Outputs:
+
+Human-readable summary:
+
+[OK]         secret/data/prod/api/token
+[MISSING]    secret/data/prod/api/backup_key     (referenced in 3 files)
+[STALE]      secret/data/staging/old-service     (no reads since 2023)
+[UNKNOWN]    secret/data/prod/payment/api_key    (403 access denied)
+
+JSON report:
+
+{
+  "missing": ["secret/data/prod/api/backup_key"],
+  "stale": ["secret/data/staging/old-service"],
+  "ok": ["secret/data/prod/api/token"]
+}
+
+Perfect for CI/CD automation.
+
+And yes, VaultSpectre can fail the build if a new missing/invalid path appears.
+
+⸻
+
+🚀 Installation
+
+(Placeholder until PyPI release)
+
+pip install vaultspectre
+
+From source:
+
+git clone https://github.com/ppiankov/vaultspectre.git
+cd vaultspectre
+pip install -r requirements.txt
+
+
+⸻
+
+🎮 Usage
+
+Basic check against Vault:
+
+vaultspectre check \
+  --repo ./repo \
+  --vault-addr https://vault.example.com \
+  --token $VAULT_TOKEN
+
+JSON mode:
+
+vaultspectre check --json > vaultspectre-report.json
+
+Fail pipeline when secrets are missing:
+
+vaultspectre check \
+  --repo . \
+  --vault-addr https://vault.example.com \
+  --token $VAULT_TOKEN \
+  --fail-on-missing
+
+
+⸻
+
+📁 Project Structure (MVP)
+
+vaultspectre/
+├── scanner/
+│   ├── yaml_scanner.py
+│   ├── jinja_scanner.py
+│   ├── ansible_scanner.py
+│   ├── regex_scanner.py
+│   └── ...
+├── vault/
+│   ├── client.py
+│   └── validator.py
+├── analysis/
+│   └── analyzer.py
+├── report/
+│   ├── text_report.py
+│   └── json_report.py
+├── cli.py
+├── pyproject.toml
+└── docs/
+    └── README.md
+
+
+⸻
+
+🧩 MVP Scope
+
+Included:
+	•	repo scanning
+	•	Vault KV1/KV2 validation
+	•	basic unused-secret detection (metadata-based)
+	•	diff engine
+	•	text + JSON output
+	•	CLI command: vaultspectre check
+
+Out of scope (future roadmap):
+	•	full audit log ingestion
+	•	dynamic template expansion
+	•	usage graphing
+	•	multi-Vault support
+	•	rotation recommendations
+
+⸻
+
+🔮 Roadmap
+
+v0.1 — MVP
+	•	CLI: vaultspectre check
+	•	Static repo scanner
+	•	KV2 metadata existence checks
+	•	JSON+text reports
+
+v0.2
+	•	Audit log integration (optional, pluggable)
+	•	Enhanced stale-secret detection
+	•	CI rule presets
+
+v0.3
+	•	Ownership mapping
+	•	Secret usage graphing
+	•	Vault namespace support
+
+⸻
+
+🤝 Contributing
+
+Issues, feature requests, and PRs are welcome.
+Especially contributions to:
+	•	additional scanners
+	•	false-positive cleanup
+	•	Vault engine support
+	•	test suites
+
+Spectres grow stronger with each contribution.
+
+⸻
+
+📜 License
+
+MIT License — see LICENSE.
+
+⸻
+
+🪦 Credits
+
+Created by ppiankov,
+chief exorcist of forgotten infrastructure secrets.
+
+⸻
+
+If you want, I can generate:
+
+✔️ CLI scaffolding (vaultspectre check)
+
+✔️ PyPI packaging (pyproject.toml)
+
+✔️ Directory structure boilerplate
+
+✔️ Example scanner code
+
+Just point the raccoon paws in the desired direction.

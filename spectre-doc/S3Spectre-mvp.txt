@@ -1,0 +1,253 @@
+Fine, you hungry little cloud-gremlin — here is the full, polished, GitHub-ready README template for S3Spectre, matching the vibe and structure of your other Spectres.
+
+Drop this into:
+
+docs/README.md
+
+or directly into the repo’s main README.md.
+
+⸻
+
+🟣 S3Spectre
+
+S3Spectre is a Python-based static + runtime auditor for AWS S3 usage.
+It scans your application codebase for S3 bucket and object references, compares those to the actual AWS S3 state, and detects missing buckets, unused buckets, stale prefixes, dangling versioned objects, and misconfigured or dangerous lifecycle/versioning settings.
+
+S3Spectre exposes the forgotten ghosts haunting your object storage — so you can finally clean them up.
+
+⸻
+
+✨ Features (MVP)
+
+🔍 1. Repo Scanner (Static S3 Reference Extraction)
+
+Detects S3 usage across:
+	•	YAML / JSON config files
+	•	.env files
+	•	Terraform (aws_s3_bucket, aws_s3_bucket_object, aws_s3_bucket_versioning)
+	•	CloudFormation templates
+	•	Python / Node / Go AWS SDK usage
+	•	Shell scripts
+	•	Hardcoded URLs:
+	•	s3://bucket/path/...
+	•	https://bucket.s3.amazonaws.com/...
+	•	Versioned S3 objects (?versionId=...)
+
+Extracts:
+	•	bucket name
+	•	prefix/object
+	•	version ID (if present)
+	•	file + line number
+	•	usage context (read/write/list/download/backup)
+
+Produces a list of RepoS3Ref references.
+
+⸻
+
+☁️ 2. AWS S3 Inspector (Runtime Metadata)
+
+Queries AWS via boto3 to collect:
+
+Buckets:
+	•	existence
+	•	region
+	•	versioning status
+	•	lifecycle policies
+	•	creation date
+	•	approximate size (optional)
+	•	policy/ACL accessibility check
+
+Prefix/Object metadata (shallow scan):
+	•	existence
+	•	last modified timestamps
+	•	object count (for prefix)
+	•	total number of versions
+	•	storage class
+
+This gives a real-world snapshot of how S3 is being used (or abandoned).
+
+⸻
+
+🧠 3. Analysis & Diff Engine
+
+Matches repo references against real AWS S3 data.
+
+Flags:
+
+✔️ MISSING_BUCKET
+Referenced in code, does not exist in AWS.
+
+✔️ UNUSED_BUCKET
+Exists in AWS but:
+	•	not referenced in repo
+	•	AND contains no recent object activity
+	•	OR clearly belongs to a retired system
+
+✔️ MISSING_PREFIX
+Repo references a prefix like s3://mybucket/logs/app1/, but AWS has zero objects matching it.
+
+✔️ STALE_PREFIX
+Prefix exists, but:
+	•	objects haven’t been modified in N days
+	•	or the bucket is an ancient archive no service touches anymore
+
+✔️ VERSION_SPRAWL
+Bucket has:
+	•	versioning enabled
+	•	hundreds or thousands of object versions
+	•	no lifecycle rules to clean them
+	•	OR versioned objects referenced explicitly in code (rare + suspicious)
+
+✔️ LIFECYCLE_MISCONFIG
+Bucket stores:
+	•	logs
+	•	backups
+	•	temp artifacts
+	•	large binary dumps
+
+…but has no expiration or storage-class transitions.
+
+✔️ OK
+Bucket/prefix exists and matches expected usage.
+
+(Expect this almost never.)
+
+⸻
+
+📝 4. Reporting
+
+Text-mode output:
+
+[MISSING_BUCKET]      s3://legacy-data
+[MISSING_PREFIX]      s3://prod-logs/app1/
+[STALE_PREFIX]        s3://backups/db/   (no updates for 400 days)
+[VERSION_SPRAWL]      s3://assets/prod/  (532 versions, no lifecycle rule)
+[UNUSED_BUCKET]       s3://tmp-old-svc
+[OK]                  s3://customer-data
+
+JSON-mode (ideal for CI/CD):
+
+{
+  "missing_bucket": ["legacy-data"],
+  "missing_prefix": ["prod-logs/app1/"],
+  "stale": ["backups/db/"],
+  "version_sprawl": ["assets/prod/"],
+  "unused": ["tmp-old-svc"],
+  "ok": ["customer-data"]
+}
+
+Supports CI/CD flags:
+	•	--fail-on-missing
+	•	--fail-on-stale
+	•	--fail-on-version-sprawl
+	•	--json
+
+⸻
+
+🚀 Usage
+
+Once installed:
+
+s3spectre check \
+  --repo ./my-repo \
+  --aws-profile prod \
+  --json
+
+Using AWS env vars:
+
+AWS_ACCESS_KEY_ID=xxx \
+AWS_SECRET_ACCESS_KEY=yyy \
+AWS_REGION=us-east-1 \
+s3spectre check --repo ./service
+
+Fail CI on missing buckets:
+
+s3spectre check \
+  --repo . \
+  --fail-on-missing
+
+
+⸻
+
+📁 Project Structure (MVP)
+
+s3spectre/
+├── scanner/
+│   ├── regex_scanner.py
+│   ├── terraform_scanner.py
+│   ├── cloudformation_scanner.py
+│   └── env_scanner.py
+├── s3/
+│   ├── inspector.py
+│   ├── versioning.py
+│   └── lifecycle.py
+├── analysis/
+│   └── analyzer.py
+├── report/
+│   ├── text_report.py
+│   └── json_report.py
+├── cli.py
+└── pyproject.toml
+
+
+⸻
+
+🧩 MVP Scope
+
+Included:
+	•	static repo scanning
+	•	AWS bucket/prefix existence check
+	•	shallow object/prefix metadata pulling
+	•	versioning + lifecycle checks
+	•	text + JSON reports
+	•	basic stale-prefix detection
+	•	CLI command: s3spectre check
+
+Post-MVP roadmap:
+	•	cost estimation
+	•	deep prefix scanning
+	•	replication rule validation
+	•	encryption (SSE-KMS/SSE-S3) analysis
+	•	IAM access graphing
+	•	detecting public buckets
+	•	enforcing naming conventions
+	•	Slack/Teams notifications
+
+⸻
+
+🤝 Contributing
+
+Contributions are welcome!
+
+Especially PRs that improve:
+	•	S3 prefix detection
+	•	Terraform scanner logic
+	•	lifecycle rule analysis
+	•	version sprawl heuristics
+	•	test coverage
+	•	documentation
+
+The Spectres grow stronger with every contribution.
+
+⸻
+
+📜 License
+
+MIT license — see LICENSE.
+
+⸻
+
+🪦 Credits
+
+Created by ppiankov,
+cloud janitor and accidental warden of haunted storage systems.
+
+⸻
+
+If you want next:
+	•	the actual repo skeleton files,
+	•	a working CLI stub,
+	•	pyproject.toml,
+	•	or tests,
+
+just hiss “skeleton me” and I’ll drop the whole structure.

@@ -1,0 +1,16 @@
+---
+- name: Deploy application
+  hosts: all
+  tasks:
+    - name: Get database password
+      set_fact:
+        db_password: "{{ lookup('hashi_vault', 'secret/data/prod/database/password') }}"
+
+    - name: Get API key
+      vault_kv2_get:
+        path: "secret/data/prod/api/key"
+      register: api_key
+
+    - name: Get missing secret
+      set_fact:
+        missing: "{{ lookup('hashi_vault', 'secret/data/prod/missing/secret') }}"
