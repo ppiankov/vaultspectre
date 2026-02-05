@@ -43,11 +43,17 @@ func (s *Scanner) Scan() ([]Reference, error) {
 			return err
 		}
 
-		// Skip directories and hidden files/directories
-		if info.IsDir() || strings.HasPrefix(filepath.Base(path), ".") {
-			if info.IsDir() && strings.HasPrefix(filepath.Base(path), ".") {
+		base := filepath.Base(path)
+
+		// Skip directories and hidden files/directories (but not the root "." or "..")
+		if info.IsDir() {
+			if strings.HasPrefix(base, ".") && base != "." && base != ".." {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+
+		if strings.HasPrefix(base, ".") {
 			return nil
 		}
 
