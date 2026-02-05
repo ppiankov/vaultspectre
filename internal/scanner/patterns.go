@@ -12,7 +12,13 @@ type Pattern struct {
 // GetPatterns returns all configured patterns for finding Vault secret references
 func GetPatterns() []*Pattern {
 	return []*Pattern{
-		// Ansible hashi_vault lookups
+		// Ansible hashi_vault lookups - community collection format with secret= parameter
+		{
+			Name:  "ansible_community_hashi_vault",
+			Type:  "ansible_lookup",
+			Regex: regexp.MustCompile(`lookup\s*\(\s*['"]community\.hashi_vault\.hashi_vault['"],\s*['"]secret=([^:'"]+)`),
+		},
+		// Ansible hashi_vault lookups - old format with direct path
 		{
 			Name:  "ansible_hashi_vault",
 			Type:  "ansible_lookup",

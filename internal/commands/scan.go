@@ -47,13 +47,18 @@ func init() {
 	scanCmd.Flags().IntVar(&staleDays, "stale-days", 90, "Days threshold for stale secret detection (0 to disable)")
 	scanCmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Path to Vault audit log file (optional, for access-based staleness)")
 	scanCmd.Flags().IntVar(&auditWindowDays, "audit-window-days", 90, "Days to look back in audit logs")
-
-	_ = scanCmd.MarkFlagRequired("vault-addr")
-	_ = scanCmd.MarkFlagRequired("token")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
+
+	// Validate required parameters
+	if vaultAddr == "" {
+		return fmt.Errorf("vault address is required: set --vault-addr flag or VAULT_ADDR environment variable")
+	}
+	if vaultToken == "" {
+		return fmt.Errorf("vault token is required: set --token flag or VAULT_TOKEN environment variable")
+	}
 
 	// Initialize scanner
 	s := scanner.New(repoPath)

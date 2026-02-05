@@ -20,6 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Limited dynamic template expansion
 - Secret rotation recommendations
 
+## [0.2.1] - 2026-02-05
+
+### Fixed
+- **Critical scanner bug**: Fixed scanner skipping all files when run from current directory (".")
+  - Scanner treated "." as a hidden directory and skipped everything
+  - Now properly excludes only actual hidden directories (.git, .github, etc.)
+- **Linter errors**: Resolved golangci-lint failures blocking CI
+  - Fixed errcheck: removed MarkFlagRequired calls, added manual validation with clear error messages
+  - Fixed unused: removed checkMetadataTimestamp function that was never called
+- **Environment variable handling**: vault-addr and token flags now work correctly with environment variables
+  - Removed cobra's MarkFlagRequired which prevented env vars from being used as defaults
+  - Added runtime validation with helpful error messages
+
+### Added
+- **Ansible community collection support**: Added pattern for `community.hashi_vault.hashi_vault` lookup format
+  - Detects modern Ansible roles using the community.hashi_vault collection
+  - Supports `secret=<path>:<key>` parameter syntax
+  - Properly marks templated paths (e.g., `{{ vault_secret_path }}/backup`) as dynamic
+
+### Changed
+- Improved error messages for missing vault address and token configuration
+- Better handling of Ansible Jinja2 template variables in vault paths
+
 ## [0.2.0] - 2026-01-25
 
 ### Added
@@ -104,7 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - License (MIT)
 - Basic project scaffolding
 
-[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.1
 [0.2.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.1.0
 [0.0.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.0.0
