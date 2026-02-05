@@ -50,9 +50,29 @@ jobs:
         sha256sum vaultspectre-* > checksums.txt
         cat checksums.txt
 
+    - name: Extract release notes from CHANGELOG
+      id: changelog
+      run: |
+        # Extract the latest version section from CHANGELOG.md
+        VERSION="${GITHUB_REF#refs/tags/}"
+        echo "Extracting notes for $VERSION"
+
+        # Extract content between the version heading and the next version heading
+        awk '/^## \['"${VERSION#v}"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release_notes.md
+
+        # If extraction failed or is empty, use the tag annotation as fallback
+        if [ ! -s release_notes.md ]; then
+          echo "CHANGELOG extraction failed, using generated notes"
+          echo "generate_notes=true" >> $GITHUB_OUTPUT
+        else
+          echo "generate_notes=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
+        body_path: ${{ steps.changelog.outputs.generate_notes == 'false' && 'release_notes.md' || '' }}
+        generate_release_notes: ${{ steps.changelog.outputs.generate_notes == 'true' }}
         files: |
           bin/vaultspectre-linux-amd64
           bin/vaultspectre-linux-arm64
@@ -60,6 +80,5 @@ jobs:
           bin/vaultspectre-darwin-arm64
           bin/vaultspectre-windows-amd64.exe
           bin/checksums.txt
-        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
