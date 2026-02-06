@@ -35,23 +35,66 @@ func (r *TextReporter) Generate(data Data) error {
 	fmt.Fprintf(r.writer, "  Scan Time:   %s\n", data.Timestamp.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(r.writer, "\n")
 
-	// Summary
-	fmt.Fprintf(r.writer, "Summary:\n")
-	fmt.Fprintf(r.writer, "  Total References:  %d\n", data.Summary.TotalReferences)
-	fmt.Fprintf(r.writer, "  ├─ OK:             %d\n", data.Summary.StatusOK)
-	fmt.Fprintf(r.writer, "  ├─ Missing:        %d\n", data.Summary.StatusMissing)
-	fmt.Fprintf(r.writer, "  ├─ Access Denied:  %d\n", data.Summary.StatusAccessDenied)
-	fmt.Fprintf(r.writer, "  ├─ Invalid:        %d\n", data.Summary.StatusInvalid)
-	fmt.Fprintf(r.writer, "  └─ Errors:         %d\n", data.Summary.StatusError)
+	// Summary - ROOTOPS format
+	validatedCount := data.Summary.StatusOK + data.Summary.StatusMissing +
+		data.Summary.StatusAccessDenied + data.Summary.StatusInvalid + data.Summary.StatusError
+	skippedCount := data.Summary.StatusNeedsResolution + data.Summary.StatusSkippedPolicy
 
-	if data.Config.StaleThresholdDays > 0 {
-		fmt.Fprintf(r.writer, "  Stale Secrets:     %d (>%d days)\n",
+	fmt.Fprintf(r.writer, "Summary:\n")
+	fmt.Fprintf(r.writer, "  Total References:     %d\n", data.Summary.TotalReferences)
+
+	if validatedCount > 0 {
+		fmt.Fprintf(r.writer, "  ├─ Validated:         %d\n", validatedCount)
+		fmt.Fprintf(r.writer, "  │  ├─ OK:            %d\n", data.Summary.StatusOK)
+		if data.Summary.StatusMissing > 0 {
+			fmt.Fprintf(r.writer, "  │  ├─ Missing:       %d\n", data.Summary.StatusMissing)
+		}
+		if data.Summary.StatusAccessDenied > 0 {
+			fmt.Fprintf(r.writer, "  │  ├─ Access Denied: %d\n", data.Summary.StatusAccessDenied)
+		}
+		if data.Summary.StatusInvalid > 0 {
+			fmt.Fprintf(r.writer, "  │  ├─ Invalid:       %d\n", data.Summary.StatusInvalid)
+		}
+		if data.Summary.StatusError > 0 {
+			fmt.Fprintf(r.writer, "  │  └─ Errors:        %d\n", data.Summary.StatusError)
+		}
+	}
+
+	if skippedCount > 0 {
+		fmt.Fprintf(r.writer, "  ├─ Skipped:           %d\n", skippedCount)
+		if data.Summary.StatusNeedsResolution > 0 {
+			fmt.Fprintf(r.writer, "  │  ├─ Unresolved:    %d (variables)\n", data.Summary.StatusNeedsResolution)
+		}
+		if data.Summary.StatusSkippedPolicy > 0 {
+			fmt.Fprintf(r.writer, "  │  └─ Policy:        %d (wildcards)\n", data.Summary.StatusSkippedPolicy)
+		}
+	}
+
+	if data.Config.StaleThresholdDays > 0 && data.Summary.StaleSecrets > 0 {
+		fmt.Fprintf(r.writer, "  └─ Stale:             %d (>%d days)\n",
 			data.Summary.StaleSecrets, data.Config.StaleThresholdDays)
 	}
 
 	fmt.Fprintf(r.writer, "\n")
-	fmt.Fprintf(r.writer, "  Health Score:      %s\n", r.formatHealthScore(data.Summary.HealthScore))
-	fmt.Fprintf(r.writer, "\n")
+	fmt.Fprintf(r.writer, "  Validation Health:    %s", r.formatHealthScore(data.Summary.HealthScore))
+	if validatedCount > 0 {
+		fmt.Fprintf(r.writer, " (%d/%d validated)", data.Summary.StatusOK, validatedCount)
+	}
+	fmt.Fprintf(r.writer, "\n\n")
+
+	// Add note about skipped paths
+	if skippedCount > 0 {
+		fmt.Fprintf(r.writer, "  Note: %d paths skipped (not errors, cannot validate statically)\n\n", skippedCount)
+	}
+
+	// Show unresolved paths first (ROOTOPS: explicit about what couldn't be validated)
+	if data.Summary.StatusNeedsResolution > 0 {
+		fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n")
+		fmt.Fprintf(r.writer, "Unresolved Paths (%d) - Require Variable Values\n", data.Summary.StatusNeedsResolution)
+		fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n")
+		r.printUnresolvedPaths(data)
+		fmt.Fprintf(r.writer, "\n")
+	}
 
 	// Detailed results
 	if data.Summary.StatusMissing > 0 {
@@ -86,11 +129,6 @@ func (r *TextReporter) Generate(data Data) error {
 		fmt.Fprintf(r.writer, "\n")
 	}
 
-	// Footer
-	fmt.Fprintf(r.writer, "═══════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(r.writer, "  Part of the SpectreOps family\n")
-	fmt.Fprintf(r.writer, "═══════════════════════════════════════════════════════════════\n")
-
 	return nil
 }
 
@@ -117,6 +155,49 @@ func (r *TextReporter) printSecretsByStatus(data Data, status string) {
 			fmt.Fprintf(r.writer, "      - %s:%d (%s)\n", ref.File, ref.Line, ref.Type)
 		}
 	}
+}
+
+func (r *TextReporter) printUnresolvedPaths(data Data) {
+	// Group by variables needed
+	variableMap := make(map[string][]string) // variable -> list of paths
+
+	for _, ref := range data.References {
+		if ref.Status == "needs_resolution" && len(ref.Variables) > 0 {
+			for _, varName := range ref.Variables {
+				variableMap[varName] = append(variableMap[varName], ref.Path)
+			}
+		}
+	}
+
+	// Get unique variables
+	var variables []string
+	for varName := range variableMap {
+		variables = append(variables, varName)
+	}
+	sort.Strings(variables)
+
+	fmt.Fprintf(r.writer, "\n  These paths contain variables and cannot be validated without values.\n")
+	fmt.Fprintf(r.writer, "  Provide values with:\n\n")
+
+	if len(variables) > 0 {
+		fmt.Fprintf(r.writer, "    vaultspectre scan . --var %s=<value>", variables[0])
+		if len(variables) > 1 {
+			fmt.Fprintf(r.writer, " --var %s=<value>", variables[1])
+		}
+		fmt.Fprintf(r.writer, "\n\n")
+	}
+
+	fmt.Fprintf(r.writer, "  Missing variables:\n")
+	for _, varName := range variables {
+		paths := variableMap[varName]
+		// Get unique paths
+		uniquePaths := make(map[string]bool)
+		for _, p := range paths {
+			uniquePaths[p] = true
+		}
+		fmt.Fprintf(r.writer, "    - %s (used in %d path(s))\n", varName, len(uniquePaths))
+	}
+	fmt.Fprintf(r.writer, "\n")
 }
 
 func (r *TextReporter) printStaleSecrets(data Data) {

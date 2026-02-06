@@ -31,8 +31,9 @@ func NewValidatorWithAudit(client *Client, analyzer *audit.Analyzer) *Validator 
 }
 
 // ValidatePath validates a Vault secret path and returns its status
+// Handles both KV v1 and KV v2 paths automatically
 func (v *Validator) ValidatePath(path string) (string, error) {
-	// Try to read the secret
+	// Try to read the secret as-is first
 	secret, err := v.client.Read(path)
 
 	if err != nil {
@@ -44,13 +45,55 @@ func (v *Validator) ValidatePath(path string) (string, error) {
 		return "error", err
 	}
 
-	// If secret is nil, it doesn't exist
-	if secret == nil {
-		return "missing", nil
+	// If secret exists with data, return ok
+	// Note: Vault API returns non-nil secret with empty data for nonexistent paths
+	if secret != nil && secret.Data != nil && len(secret.Data) > 0 {
+		return "ok", nil
 	}
 
-	// Secret exists and is accessible
-	return "ok", nil
+	// Secret doesn't exist at this path - try KV v2 path (add /data/)
+	kvv2Path := convertToKVv2Path(path)
+	if kvv2Path != path {
+		secret, err = v.client.Read(kvv2Path)
+		if err != nil {
+			if strings.Contains(err.Error(), "permission denied") ||
+				strings.Contains(err.Error(), "403") {
+				return "access_denied", nil
+			}
+			return "error", err
+		}
+		if secret != nil && secret.Data != nil && len(secret.Data) > 0 {
+			return "ok", nil
+		}
+	}
+
+	// Tried both paths, secret doesn't exist
+	return "missing", nil
+}
+
+// convertToKVv2Path converts a KV v1 style path to KV v2 by inserting /data/
+// e.g., "secret/production/app" -> "secret/data/production/app"
+// If path already contains /data/, returns unchanged
+func convertToKVv2Path(path string) string {
+	// Already has /data/ or /metadata/ - don't modify
+	if strings.Contains(path, "/data/") || strings.Contains(path, "/metadata/") {
+		return path
+	}
+
+	// System paths (sys/, auth/, etc.) shouldn't be modified
+	if strings.HasPrefix(path, "sys/") || strings.HasPrefix(path, "auth/") ||
+		strings.HasPrefix(path, "cubbyhole/") || strings.HasPrefix(path, "identity/") {
+		return path
+	}
+
+	// Insert /data/ after the mount point (first segment)
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) == 2 {
+		return parts[0] + "/data/" + parts[1]
+	}
+
+	// Path has no slashes or only one segment - return as-is
+	return path
 }
 
 // CheckStaleness checks if a secret is stale using BOTH metadata and audit logs

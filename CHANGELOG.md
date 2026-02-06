@@ -20,6 +20,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Limited dynamic template expansion
 - Secret rotation recommendations
 
+## [0.2.2] - 2026-02-06
+
+### Added
+- **Variable resolution system (RootOps-aligned)**
+  - New `--var` flag for setting variable values: `--var vault_secret_path=secret/data/prod`
+  - New `--var-file` flag for loading variables from YAML files
+  - New `--detect-vars` flag for auto-detection from Ansible inventory (fully implemented)
+    - Scans inventory/*/group_vars/*.yml, group_vars/*.yml, host_vars/*.yml
+    - Parses YAML files and extracts string variables
+    - Skips example/sample files and Jinja2 template variables
+  - Proper Ansible variable interpolation: `{{ varname }}` detection and resolution
+  - Variable loading priority: CLI flags > var-file > auto-detection
+- **Enhanced status classification**
+  - `needs_resolution` - Paths with unresolved variables (requires explicit values)
+  - `skipped_policy` - Vault policy wildcards (cannot be validated)
+  - `pending_validation` - Resolved paths ready to validate
+- **Improved reporting**
+  - Shows validated vs skipped paths separately
+  - Displays variable requirements when variables are missing
+  - Clear instructions for providing variable values
+  - Unresolved paths section with variable usage details
+
+### Fixed
+- **CRITICAL: Vault validation bug** - All paths were incorrectly reported as "ok"
+  - Vault API returns non-nil secret with empty data for nonexistent paths
+  - Validator now checks `secret.Data != nil && len(secret.Data) > 0`
+  - False negatives eliminated: missing secrets now correctly detected
+- **KV v2 path handling** - Automatic /data/ insertion for KV v2 paths
+  - Paths like `secret/production/app` now try both direct and `secret/data/production/app`
+  - Handles both KV v1 and KV v2 mounts automatically
+  - System paths (sys/, auth/, etc.) excluded from /data/ insertion
+- **False positives from variable definitions**
+  - Scanner now excludes YAML variable definitions (e.g., `vault_secret_path: "secret/data/..."`)
+  - Only extracts actual Vault references (lookups, reads, etc.)
+  - Prevents double-extraction of paths from variable assignments
+- **Health score calculation**
+  - Now only counts validated paths (was incorrectly including skipped paths)
+  - Skipped/unresolved paths are not failures, just unvalidatable
+  - More accurate health assessment: EXCELLENT/GOOD/WARNING/CRITICAL/SEVERE
+
+### Changed
+- **RootOps principle enforcement**
+  - Refuses to validate paths with unresolved variables (no guessing)
+  - Requires explicit variable values via CLI flags or file
+  - Clear error messages when variables are missing
+  - Honest reporting: only validated paths affect health score
+- Report format now distinguishes between validation failures and unvalidatable paths
+- Scanner validates resolved paths instead of skipping dynamic paths
+
+### Documentation
+- Added `IMPLEMENTATION_SUMMARY.md` documenting variable resolution design
+- Added `VARIABLE_RESOLUTION.md` explaining the resolution approach
+- Added `ROOTOPS_ALIGNMENT.md` documenting RootOps principles application
+
 ## [0.2.1] - 2026-02-05
 
 ### Fixed
@@ -127,7 +181,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - License (MIT)
 - Basic project scaffolding
 
-[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.2
 [0.2.1]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.1
 [0.2.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.1.0

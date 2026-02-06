@@ -17,15 +17,17 @@ type Results struct {
 
 // Summary contains summary statistics
 type Summary struct {
-	TotalReferences    int    `json:"total_references"`
-	StatusOK           int    `json:"status_ok"`
-	StatusMissing      int    `json:"status_missing"`
-	StatusAccessDenied int    `json:"status_access_denied"`
-	StatusInvalid      int    `json:"status_invalid"`
-	StatusDynamic      int    `json:"status_dynamic"`
-	StatusError        int    `json:"status_error"`
-	StaleSecrets       int    `json:"stale_secrets"`
-	HealthScore        string `json:"health_score"`
+	TotalReferences       int    `json:"total_references"`
+	StatusOK              int    `json:"status_ok"`
+	StatusMissing         int    `json:"status_missing"`
+	StatusAccessDenied    int    `json:"status_access_denied"`
+	StatusInvalid         int    `json:"status_invalid"`
+	StatusDynamic         int    `json:"status_dynamic"`          // Legacy: kept for compatibility
+	StatusError           int    `json:"status_error"`
+	StatusNeedsResolution int    `json:"status_needs_resolution"` // Paths with unresolved variables
+	StatusSkippedPolicy   int    `json:"status_skipped_policy"`   // Policy wildcards
+	StaleSecrets          int    `json:"stale_secrets"`
+	HealthScore           string `json:"health_score"`
 }
 
 // SecretInfo contains information about a specific secret
@@ -81,6 +83,10 @@ func (a *Analyzer) Analyze() *Results {
 			summary.StatusDynamic++
 		case "error":
 			summary.StatusError++
+		case "needs_resolution":
+			summary.StatusNeedsResolution++
+		case "skipped_policy":
+			summary.StatusSkippedPolicy++
 		}
 
 		// Count stale secrets
@@ -99,16 +105,21 @@ func (a *Analyzer) Analyze() *Results {
 }
 
 func calculateHealthScore(s Summary) string {
-	if s.TotalReferences == 0 {
+	// ROOTOPS: Only count validated paths in health score
+	// Skipped and unresolved paths are not failures, just unvalidatable
+	validatedCount := s.StatusOK + s.StatusMissing + s.StatusAccessDenied + s.StatusInvalid + s.StatusError
+
+	if validatedCount == 0 {
+		// No paths were validated - cannot determine health
 		return "unknown"
 	}
 
-	// Calculate percentage of issues
+	// Calculate percentage of issues among validated paths only
 	issues := s.StatusMissing + s.StatusInvalid + s.StatusError
-	issuePercent := float64(issues) / float64(s.TotalReferences) * 100
+	issuePercent := float64(issues) / float64(validatedCount) * 100
 
 	// Consider stale secrets as partial issues
-	stalePercent := float64(s.StaleSecrets) / float64(s.TotalReferences) * 100
+	stalePercent := float64(s.StaleSecrets) / float64(validatedCount) * 100
 
 	totalIssuePercent := issuePercent + (stalePercent * 0.5)
 

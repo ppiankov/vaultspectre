@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ppiankov/vaultspectre/internal/analyzer"
@@ -11,6 +13,7 @@ import (
 	"github.com/ppiankov/vaultspectre/internal/scanner"
 	"github.com/ppiankov/vaultspectre/internal/vault"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -24,6 +27,9 @@ var (
 	staleDays       int
 	auditLogPath    string
 	auditWindowDays int
+	varFlags        []string // --var key=value flags
+	varFile         string   // --var-file path/to/vars.yaml
+	detectVars      bool     // --detect-vars flag
 )
 
 var scanCmd = &cobra.Command{
@@ -47,6 +53,9 @@ func init() {
 	scanCmd.Flags().IntVar(&staleDays, "stale-days", 90, "Days threshold for stale secret detection (0 to disable)")
 	scanCmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Path to Vault audit log file (optional, for access-based staleness)")
 	scanCmd.Flags().IntVar(&auditWindowDays, "audit-window-days", 90, "Days to look back in audit logs")
+	scanCmd.Flags().StringArrayVar(&varFlags, "var", []string{}, "Set variable value (e.g., --var vault_secret_path=secret/data/prod)")
+	scanCmd.Flags().StringVar(&varFile, "var-file", "", "Path to YAML file containing variable values")
+	scanCmd.Flags().BoolVar(&detectVars, "detect-vars", false, "Auto-detect variables from Ansible inventory files")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -75,6 +84,55 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if outputFormat == "text" {
 		fmt.Fprintf(os.Stderr, "Found %d secret references\n", len(references))
+	}
+
+	// ROOTOPS: Resolve variables before validation
+	variables, err := loadVariables(varFlags, varFile, detectVars, repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to load variables: %w", err)
+	}
+
+	resolver := scanner.NewResolver(variables)
+
+	// Detect all required variables
+	allVariables := resolver.DetectVariables(references)
+	if len(allVariables) > 0 && len(variables) == 0 && !detectVars {
+		// ROOTOPS: Refuse to proceed without variable values
+		fmt.Fprintf(os.Stderr, "\nERROR: Found %d paths with unresolved variables\n\n", countRefsNeedingResolution(references))
+		fmt.Fprintf(os.Stderr, "Cannot validate:\n")
+		for _, ref := range references {
+			if ref.Status == "needs_resolution" && len(ref.Variables) > 0 {
+				fmt.Fprintf(os.Stderr, "  - %s (missing: %s)\n", ref.Path, strings.Join(ref.Variables, ", "))
+			}
+		}
+		fmt.Fprintf(os.Stderr, "\nPlease provide variable values:\n")
+		fmt.Fprintf(os.Stderr, "  vaultspectre scan . --var %s=<value>\n", allVariables[0])
+		fmt.Fprintf(os.Stderr, "\nOr provide a variable file:\n")
+		fmt.Fprintf(os.Stderr, "  vaultspectre scan . --var-file vars.yaml\n\n")
+		return fmt.Errorf("missing required variables: %s", strings.Join(allVariables, ", "))
+	}
+
+	// Resolve variables in paths
+	references, missingVarsMap := resolver.ResolveAll(references)
+
+	if len(missingVarsMap) > 0 {
+		fmt.Fprintf(os.Stderr, "\nWARNING: Some variables could not be resolved:\n")
+		for varName := range missingVarsMap {
+			fmt.Fprintf(os.Stderr, "  - %s\n", varName)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+
+	resolvedCount := countResolvedRefs(references)
+	unresolvedCount := countUnresolvedRefs(references)
+
+	if outputFormat == "text" {
+		if resolvedCount > 0 {
+			fmt.Fprintf(os.Stderr, "Resolved %d paths with variables\n", resolvedCount)
+		}
+		if unresolvedCount > 0 {
+			fmt.Fprintf(os.Stderr, "WARNING: %d paths remain unresolved\n", unresolvedCount)
+		}
 		fmt.Fprintf(os.Stderr, "Connecting to Vault: %s\n", vaultAddr)
 	}
 
@@ -122,12 +180,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	for i := range references {
-		// Skip validation for paths already marked as dynamic
-		if references[i].Status == "dynamic" {
+		// ROOTOPS: Only validate paths that are ready (resolved or static)
+		if references[i].Status != "pending_validation" {
+			// Skip: needs_resolution, skipped_policy, etc.
 			continue
 		}
 
-		status, err := validator.ValidatePath(references[i].Path)
+		// Use ResolvedPath for validation (will be same as Path for static paths)
+		pathToValidate := references[i].ResolvedPath
+		if pathToValidate == "" {
+			pathToValidate = references[i].Path
+		}
+
+		status, err := validator.ValidatePath(pathToValidate)
 		if err != nil {
 			// Non-fatal, record the error in status
 			references[i].Status = "error"
@@ -138,7 +203,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 		// Check for staleness if enabled
 		if staleDays > 0 && status == "ok" {
-			isStale, lastAccessed, err := validator.CheckStaleness(references[i].Path, staleDays)
+			isStale, lastAccessed, err := validator.CheckStaleness(pathToValidate, staleDays)
 			if err == nil {
 				references[i].IsStale = isStale
 				references[i].LastAccessed = lastAccessed
@@ -188,4 +253,178 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// loadVariables loads variable values from CLI flags, file, or auto-detection
+func loadVariables(varFlags []string, varFile string, detectVars bool, repoPath string) (map[string]string, error) {
+	variables := make(map[string]string)
+
+	// Load from --var flags
+	for _, v := range varFlags {
+		parts := strings.SplitN(v, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid --var format: %s (expected key=value)", v)
+		}
+		variables[parts[0]] = parts[1]
+	}
+
+	// Load from --var-file
+	if varFile != "" {
+		fileVars, err := loadVarFile(varFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load var file: %w", err)
+		}
+		// Merge file vars (CLI flags take precedence)
+		for k, v := range fileVars {
+			if _, exists := variables[k]; !exists {
+				variables[k] = v
+			}
+		}
+	}
+
+	// Auto-detect from Ansible inventory (opt-in)
+	if detectVars {
+		detectedVars, err := detectAnsibleVariables(repoPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: auto-detection failed: %v\n", err)
+		} else {
+			// Merge detected vars (explicit flags take precedence)
+			for k, v := range detectedVars {
+				if _, exists := variables[k]; !exists {
+					variables[k] = v
+				}
+			}
+			fmt.Fprintf(os.Stderr, "Auto-detected %d variables from Ansible inventory\n", len(detectedVars))
+		}
+	}
+
+	return variables, nil
+}
+
+// loadVarFile loads variables from a YAML file
+func loadVarFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var content struct {
+		Variables map[string]string `yaml:"variables"`
+	}
+
+	if err := yaml.Unmarshal(data, &content); err != nil {
+		return nil, err
+	}
+
+	return content.Variables, nil
+}
+
+// detectAnsibleVariables scans Ansible inventory for variable definitions
+// Looks in: inventory/*/group_vars/*.yml, group_vars/*.yml, host_vars/*.yml
+func detectAnsibleVariables(repoPath string) (map[string]string, error) {
+	variables := make(map[string]string)
+
+	// Search patterns for Ansible variable files
+	searchPaths := []string{
+		"inventory/*/group_vars/*.yml",
+		"inventory/*/group_vars/*.yaml",
+		"inventory/*/host_vars/*.yml",
+		"inventory/*/host_vars/*.yaml",
+		"group_vars/*.yml",
+		"group_vars/*.yaml",
+		"host_vars/*.yml",
+		"host_vars/*.yaml",
+	}
+
+	for _, pattern := range searchPaths {
+		fullPattern := filepath.Join(repoPath, pattern)
+		matches, err := filepath.Glob(fullPattern)
+		if err != nil {
+			continue // Skip patterns that error
+		}
+
+		for _, filePath := range matches {
+			// Skip example files
+			if strings.Contains(filepath.Base(filePath), "example") ||
+			   strings.Contains(filepath.Base(filePath), "sample") {
+				continue
+			}
+
+			vars, err := parseAnsibleVarsFile(filePath)
+			if err != nil {
+				continue // Skip files that can't be parsed
+			}
+
+			// Merge variables (first occurrence wins)
+			for key, value := range vars {
+				if _, exists := variables[key]; !exists {
+					variables[key] = value
+				}
+			}
+		}
+	}
+
+	return variables, nil
+}
+
+// parseAnsibleVarsFile parses a YAML file and extracts string variables
+func parseAnsibleVarsFile(filePath string) (map[string]string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse YAML into generic map
+	var content map[string]interface{}
+	if err := yaml.Unmarshal(data, &content); err != nil {
+		return nil, err
+	}
+
+	variables := make(map[string]string)
+
+	// Extract only string variables (ignore complex types)
+	for key, value := range content {
+		// Only extract simple string values
+		if strValue, ok := value.(string); ok {
+			// Skip if the value contains Jinja2 templates (these are derived variables)
+			if !strings.Contains(strValue, "{{") {
+				variables[key] = strValue
+			}
+		}
+	}
+
+	return variables, nil
+}
+
+// countRefsNeedingResolution counts references that need variable resolution
+func countRefsNeedingResolution(refs []scanner.Reference) int {
+	count := 0
+	for _, ref := range refs {
+		if ref.Status == "needs_resolution" {
+			count++
+		}
+	}
+	return count
+}
+
+// countResolvedRefs counts references that were successfully resolved
+func countResolvedRefs(refs []scanner.Reference) int {
+	count := 0
+	for _, ref := range refs {
+		if ref.ResolvedPath != "" && ref.ResolvedPath != ref.Path {
+			count++
+		}
+	}
+	return count
+}
+
+// countUnresolvedRefs counts references that still need resolution
+func countUnresolvedRefs(refs []scanner.Reference) int {
+	count := 0
+	for _, ref := range refs {
+		if ref.Status == "needs_resolution" {
+			count++
+		}
+	}
+	return count
 }

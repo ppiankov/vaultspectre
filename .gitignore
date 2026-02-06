@@ -32,3 +32,23 @@ go.work
 *.json
 /report/
 .spectre/
+
+# Reports (generated during testing)
+test-reports/
+test-*.txt
+test-*.json
+test-*.md
+test-*.sh
+*.json
+*.md
+!artifacts/**/*.json
+!artifacts/**/*.md
+!docs/**/*.md
+!README.md
+!PRINCIPLES.md
+!LICENSE
+!CHANGELOG.md
+!CONTRIBUTING.md
+!FIELD_NOTES.md
+!SECURITY.md
+!VARIABLE_RESOLUTION.md
