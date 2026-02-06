@@ -28,4 +28,7 @@ type Config struct {
 	VaultAddr          string `json:"vault_addr"`
 	RepoPath           string `json:"repo_path"`
 	StaleThresholdDays int    `json:"stale_threshold_days"`
+	Verbose            bool   `json:"verbose,omitempty"`
+	SummaryOnly        bool   `json:"summary_only,omitempty"`
+	GroupByRole        bool   `json:"group_by_role,omitempty"`
 }

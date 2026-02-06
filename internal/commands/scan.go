@@ -30,6 +30,10 @@ var (
 	varFlags        []string // --var key=value flags
 	varFile         string   // --var-file path/to/vars.yaml
 	detectVars      bool     // --detect-vars flag
+	verbose         bool     // --verbose flag
+	listPaths       bool     // --list-paths flag
+	summaryOnly     bool     // --summary-only flag
+	groupByRole     bool     // --group-by-role flag
 )
 
 var scanCmd = &cobra.Command{
@@ -38,7 +42,25 @@ var scanCmd = &cobra.Command{
 	Long: `Scans the specified repository for Vault secret path references
 and validates each path against the configured Vault instance.
 
-Generates a report of missing, stale, and invalid secret paths.`,
+Generates a report of missing, stale, and invalid secret paths.
+
+Exit Codes:
+  0 - Success (all secrets OK or only skipped/unresolved paths)
+  1 - Issues found (missing/invalid secrets when --fail-on-missing used)
+  2 - Error (configuration error, Vault connection failure, etc.)
+
+Examples:
+  # Basic scan with auto-detection
+  vaultspectre scan . --detect-vars
+
+  # Scan with explicit variable
+  vaultspectre scan . --var vault_secret_path=secret/production/app
+
+  # CI/CD mode with fast summary
+  vaultspectre scan . --detect-vars --summary-only --fail-on-missing
+
+  # Export paths for documentation
+  vaultspectre scan . --detect-vars --list-paths > secrets.txt`,
 	RunE: runScan,
 }
 
@@ -56,6 +78,10 @@ func init() {
 	scanCmd.Flags().StringArrayVar(&varFlags, "var", []string{}, "Set variable value (e.g., --var vault_secret_path=secret/data/prod)")
 	scanCmd.Flags().StringVar(&varFile, "var-file", "", "Path to YAML file containing variable values")
 	scanCmd.Flags().BoolVar(&detectVars, "detect-vars", false, "Auto-detect variables from Ansible inventory files")
+	scanCmd.Flags().BoolVar(&verbose, "verbose", false, "Show detailed information about variable resolution and resolved paths")
+	scanCmd.Flags().BoolVar(&listPaths, "list-paths", false, "Output simple list of resolved paths only (one per line)")
+	scanCmd.Flags().BoolVar(&summaryOnly, "summary-only", false, "Show only the summary, skip detailed results")
+	scanCmd.Flags().BoolVar(&groupByRole, "group-by-role", false, "Group secrets by role/component in the report")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -87,9 +113,23 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// ROOTOPS: Resolve variables before validation
-	variables, err := loadVariables(varFlags, varFile, detectVars, repoPath)
+	variables, variableSources, err := loadVariables(varFlags, varFile, detectVars, repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to load variables: %w", err)
+	}
+
+	// Verbose: Show loaded variables and their sources
+	if verbose && outputFormat == "text" && len(variables) > 0 {
+		fmt.Fprintf(os.Stderr, "\nLoaded Variables (%d):\n", len(variables))
+		for key, value := range variables {
+			source := variableSources[key]
+			if source == "" {
+				source = "unknown"
+			}
+			fmt.Fprintf(os.Stderr, "  %s = %s\n", key, value)
+			fmt.Fprintf(os.Stderr, "    source: %s\n", source)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	resolver := scanner.NewResolver(variables)
@@ -133,6 +173,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if unresolvedCount > 0 {
 			fmt.Fprintf(os.Stderr, "WARNING: %d paths remain unresolved\n", unresolvedCount)
 		}
+
+		// Verbose: Show resolved paths
+		if verbose && resolvedCount > 0 {
+			fmt.Fprintf(os.Stderr, "\nResolved Paths:\n")
+			for _, ref := range references {
+				if ref.ResolvedPath != "" && ref.ResolvedPath != ref.Path {
+					fmt.Fprintf(os.Stderr, "  %s\n", ref.Path)
+					fmt.Fprintf(os.Stderr, "    → %s\n", ref.ResolvedPath)
+				}
+			}
+			fmt.Fprintf(os.Stderr, "\n")
+		}
+
 		fmt.Fprintf(os.Stderr, "Connecting to Vault: %s\n", vaultAddr)
 	}
 
@@ -215,6 +268,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 	a := analyzer.New(references)
 	results := a.Analyze()
 
+	// Handle --list-paths mode: output simple list and exit
+	if listPaths {
+		printPathsList(references)
+		return nil
+	}
+
 	// Generate report
 	var reporter report.Reporter
 	if outputFormat == "json" {
@@ -231,6 +290,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 			VaultAddr:          vaultAddr,
 			RepoPath:           repoPath,
 			StaleThresholdDays: staleDays,
+			Verbose:            verbose,
+			SummaryOnly:        summaryOnly,
+			GroupByRole:        groupByRole,
 		},
 		Summary:    results.Summary,
 		Secrets:    results.Secrets,
@@ -256,35 +318,39 @@ func runScan(cmd *cobra.Command, args []string) error {
 }
 
 // loadVariables loads variable values from CLI flags, file, or auto-detection
-func loadVariables(varFlags []string, varFile string, detectVars bool, repoPath string) (map[string]string, error) {
+// Returns variables map and sources map (variable -> source description)
+func loadVariables(varFlags []string, varFile string, detectVars bool, repoPath string) (map[string]string, map[string]string, error) {
 	variables := make(map[string]string)
+	sources := make(map[string]string)
 
 	// Load from --var flags
 	for _, v := range varFlags {
 		parts := strings.SplitN(v, "=", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid --var format: %s (expected key=value)", v)
+			return nil, nil, fmt.Errorf("invalid --var format: %s (expected key=value)", v)
 		}
 		variables[parts[0]] = parts[1]
+		sources[parts[0]] = "--var flag (CLI)"
 	}
 
 	// Load from --var-file
 	if varFile != "" {
 		fileVars, err := loadVarFile(varFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load var file: %w", err)
+			return nil, nil, fmt.Errorf("failed to load var file: %w", err)
 		}
 		// Merge file vars (CLI flags take precedence)
 		for k, v := range fileVars {
 			if _, exists := variables[k]; !exists {
 				variables[k] = v
+				sources[k] = fmt.Sprintf("--var-file (%s)", varFile)
 			}
 		}
 	}
 
 	// Auto-detect from Ansible inventory (opt-in)
 	if detectVars {
-		detectedVars, err := detectAnsibleVariables(repoPath)
+		detectedVars, detectedSources, err := detectAnsibleVariables(repoPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-detection failed: %v\n", err)
 		} else {
@@ -292,13 +358,14 @@ func loadVariables(varFlags []string, varFile string, detectVars bool, repoPath 
 			for k, v := range detectedVars {
 				if _, exists := variables[k]; !exists {
 					variables[k] = v
+					sources[k] = detectedSources[k]
 				}
 			}
 			fmt.Fprintf(os.Stderr, "Auto-detected %d variables from Ansible inventory\n", len(detectedVars))
 		}
 	}
 
-	return variables, nil
+	return variables, sources, nil
 }
 
 // loadVarFile loads variables from a YAML file
@@ -321,8 +388,10 @@ func loadVarFile(path string) (map[string]string, error) {
 
 // detectAnsibleVariables scans Ansible inventory for variable definitions
 // Looks in: inventory/*/group_vars/*.yml, group_vars/*.yml, host_vars/*.yml
-func detectAnsibleVariables(repoPath string) (map[string]string, error) {
+// Returns variables map and sources map (variable -> file path)
+func detectAnsibleVariables(repoPath string) (map[string]string, map[string]string, error) {
 	variables := make(map[string]string)
+	sources := make(map[string]string)
 
 	// Search patterns for Ansible variable files
 	searchPaths := []string{
@@ -355,16 +424,20 @@ func detectAnsibleVariables(repoPath string) (map[string]string, error) {
 				continue // Skip files that can't be parsed
 			}
 
+			// Get relative path for source display
+			relPath, _ := filepath.Rel(repoPath, filePath)
+
 			// Merge variables (first occurrence wins)
 			for key, value := range vars {
 				if _, exists := variables[key]; !exists {
 					variables[key] = value
+					sources[key] = fmt.Sprintf("auto-detect (%s)", relPath)
 				}
 			}
 		}
 	}
 
-	return variables, nil
+	return variables, sources, nil
 }
 
 // parseAnsibleVarsFile parses a YAML file and extracts string variables
@@ -427,4 +500,20 @@ func countUnresolvedRefs(refs []scanner.Reference) int {
 		}
 	}
 	return count
+}
+
+// printPathsList outputs a simple list of resolved Vault paths (one per line)
+func printPathsList(refs []scanner.Reference) {
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		path := ref.ResolvedPath
+		if path == "" {
+			path = ref.Path
+		}
+		// Only include validated paths, skip unresolved
+		if ref.Status != "needs_resolution" && ref.Status != "skipped_policy" && !seen[path] {
+			fmt.Println(path)
+			seen[path] = true
+		}
+	}
 }

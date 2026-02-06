@@ -7,18 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v0.3
+### Planned for v0.4
 - Concurrent Vault API calls with rate limiting
 - Configuration file support (`.vaultspectre.yaml`)
 - Exclude patterns for false positive filtering
 - Custom pattern injection
-- Diff mode (compare scans over time)
 - Secret ownership mapping
 - Usage dependency graphing
 - Multi-Vault support
 - Vault namespace hierarchy support
 - Limited dynamic template expansion
 - Secret rotation recommendations
+- SARIF output format for GitHub code scanning integration
+- Prometheus metrics export
+
+## [0.2.3] - 2026-02-06
+
+### Added
+- **New output modes for automation and usability**
+  - `--verbose` - Show detailed variable sources and resolved path mappings
+  - `--list-paths` - Output clean list of resolved paths (one per line) for scripts/documentation
+  - `--summary-only` - Show only summary for fast CI/CD health checks
+  - `--group-by-role` - Group secrets by Ansible role/component for better organization
+
+### Improved
+- Variable detection now tracks sources (shows which file each variable came from)
+- Report shows template → resolved path mapping in verbose mode
+- Better visibility into variable resolution process
 
 ## [0.2.2] - 2026-02-06
 
@@ -41,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Displays variable requirements when variables are missing
   - Clear instructions for providing variable values
   - Unresolved paths section with variable usage details
+- **New output modes**
+  - `--verbose` - Show detailed variable sources and resolved paths
+  - `--list-paths` - Output simple list of resolved paths (one per line, for scripts)
+  - `--summary-only` - Show only summary, skip detailed results (fast CI/CD checks)
+  - `--group-by-role` - Group secrets by Ansible role/component
 
 ### Fixed
 - **CRITICAL: Vault validation bug** - All paths were incorrectly reported as "ok"
@@ -181,7 +201,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - License (MIT)
 - Basic project scaffolding
 
-[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.3
 [0.2.2]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.2
 [0.2.1]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.1
 [0.2.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.0

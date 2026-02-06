@@ -87,6 +87,17 @@ func (r *TextReporter) Generate(data Data) error {
 		fmt.Fprintf(r.writer, "  Note: %d paths skipped (not errors, cannot validate statically)\n\n", skippedCount)
 	}
 
+	// If summary-only mode, skip detailed results
+	if data.Config.SummaryOnly {
+		return nil
+	}
+
+	// Group by role mode
+	if data.Config.GroupByRole {
+		r.printGroupedByRole(data)
+		return nil
+	}
+
 	// Show unresolved paths first (ROOTOPS: explicit about what couldn't be validated)
 	if data.Summary.StatusNeedsResolution > 0 {
 		fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n")
@@ -145,6 +156,18 @@ func (r *TextReporter) printSecretsByStatus(data Data, status string) {
 	for _, path := range paths {
 		info := data.Secrets[path]
 		fmt.Fprintf(r.writer, "\n  [%s] %s\n", strings.ToUpper(status), path)
+
+		// Verbose: Show template and resolved path
+		if data.Config.Verbose {
+			// Find the reference to get template info
+			for _, ref := range data.References {
+				if ref.ResolvedPath == path && ref.Path != ref.ResolvedPath {
+					fmt.Fprintf(r.writer, "    Template: %s\n", ref.Path)
+					fmt.Fprintf(r.writer, "    Resolved: %s\n", ref.ResolvedPath)
+					break
+				}
+			}
+		}
 
 		if info.ErrorMsg != "" {
 			fmt.Fprintf(r.writer, "    Error: %s\n", info.ErrorMsg)
@@ -240,4 +263,83 @@ func (r *TextReporter) formatHealthScore(score string) string {
 		return formatted
 	}
 	return score
+}
+
+// printGroupedByRole groups secrets by role/component
+func (r *TextReporter) printGroupedByRole(data Data) {
+	// Group references by role (extract from file path)
+	roleSecrets := make(map[string]map[string][]string) // role -> status -> []paths
+
+	for _, ref := range data.References {
+		// Extract role from path like "roles/clickhouse-server/tasks/vault.yml"
+		role := "other"
+		if strings.HasPrefix(ref.File, "roles/") {
+			parts := strings.Split(ref.File, "/")
+			if len(parts) >= 2 {
+				role = parts[1]
+			}
+		}
+
+		path := ref.ResolvedPath
+		if path == "" {
+			path = ref.Path
+		}
+
+		status := ref.Status
+		if status == "pending_validation" {
+			// Find actual status from secrets map
+			if secret, exists := data.Secrets[path]; exists {
+				status = secret.Status
+			}
+		}
+
+		if roleSecrets[role] == nil {
+			roleSecrets[role] = make(map[string][]string)
+		}
+		roleSecrets[role][status] = append(roleSecrets[role][status], path)
+	}
+
+	// Sort roles
+	var roles []string
+	for role := range roleSecrets {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+
+	fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n")
+	fmt.Fprintf(r.writer, "Secrets Grouped by Role/Component\n")
+	fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n\n")
+
+	for _, role := range roles {
+		statuses := roleSecrets[role]
+		total := 0
+		for _, paths := range statuses {
+			total += len(paths)
+		}
+
+		fmt.Fprintf(r.writer, "Role: %s (%d secrets)\n", role, total)
+
+		// Count by status
+		okCount := len(statuses["ok"])
+		missingCount := len(statuses["missing"])
+		deniedCount := len(statuses["access_denied"])
+		unresolvedCount := len(statuses["needs_resolution"])
+
+		if okCount > 0 {
+			fmt.Fprintf(r.writer, "  ✓ OK: %d\n", okCount)
+		}
+		if missingCount > 0 {
+			fmt.Fprintf(r.writer, "  ✗ Missing: %d\n", missingCount)
+			for _, path := range statuses["missing"] {
+				fmt.Fprintf(r.writer, "      - %s\n", path)
+			}
+		}
+		if deniedCount > 0 {
+			fmt.Fprintf(r.writer, "  ✗ Access Denied: %d\n", deniedCount)
+		}
+		if unresolvedCount > 0 {
+			fmt.Fprintf(r.writer, "  ⚠ Unresolved: %d\n", unresolvedCount)
+		}
+		fmt.Fprintf(r.writer, "\n")
+	}
 }
