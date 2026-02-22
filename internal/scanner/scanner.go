@@ -15,8 +15,8 @@ type Scanner struct {
 
 // Reference represents a discovered Vault secret reference
 type Reference struct {
-	Path         string   `json:"path"`           // Original extracted path (may contain variables)
-	ResolvedPath string   `json:"resolved_path"`  // Path after variable resolution
+	Path         string   `json:"path"`          // Original extracted path (may contain variables)
+	ResolvedPath string   `json:"resolved_path"` // Path after variable resolution
 	File         string   `json:"file"`
 	Line         int      `json:"line"`
 	Type         string   `json:"type"`
@@ -24,8 +24,8 @@ type Reference struct {
 	ErrorMsg     string   `json:"error_msg,omitempty"`
 	IsStale      bool     `json:"is_stale,omitempty"`
 	LastAccessed string   `json:"last_accessed,omitempty"`
-	Variables    []string `json:"variables,omitempty"`    // Variables that need resolution
-	SkipReason   string   `json:"skip_reason,omitempty"`  // Why path was skipped (policy wildcards only)
+	Variables    []string `json:"variables,omitempty"`   // Variables that need resolution
+	SkipReason   string   `json:"skip_reason,omitempty"` // Why path was skipped (policy wildcards only)
 }
 
 // New creates a new scanner for the given repository path
@@ -95,7 +95,7 @@ func (s *Scanner) scanFile(path string) ([]Reference, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var references []Reference
 	scanner := bufio.NewScanner(file)
@@ -229,9 +229,10 @@ func containsAnsibleVar(path string) bool {
 // isYAMLVariableDefinition checks if a line is a YAML variable definition
 // Variable definitions should not be extracted as Vault path references
 // Examples:
-//   vault_secret_path: "secret/data/production/..."  <- variable definition (skip)
-//   postgres_cluster_name: "mydb"                    <- variable definition (skip)
-//   vault_keeper_secret: "{{ lookup(...) }}"         <- set_fact/task (don't skip - has lookup)
+//
+//	vault_secret_path: "secret/data/production/..."  <- variable definition (skip)
+//	postgres_cluster_name: "mydb"                    <- variable definition (skip)
+//	vault_keeper_secret: "{{ lookup(...) }}"         <- set_fact/task (don't skip - has lookup)
 func isYAMLVariableDefinition(line string) bool {
 	trimmed := strings.TrimSpace(line)
 
@@ -272,8 +273,8 @@ func isYAMLVariableDefinition(line string) bool {
 
 	// Check if it's a valid YAML key (simple identifier)
 	for _, ch := range beforeColon {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-			 (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') &&
+			(ch < '0' || ch > '9') && ch != '_' && ch != '-' {
 			return false
 		}
 	}
@@ -281,7 +282,7 @@ func isYAMLVariableDefinition(line string) bool {
 	// Additional check: if the key is specifically vault_secret_path or *_path and value is a quoted string
 	// with secret/data/ in it, it's a variable definition
 	if (strings.HasSuffix(beforeColon, "_path") || strings.HasSuffix(beforeColon, "_secret_path")) &&
-	   (strings.Contains(afterColon, "secret/data/") || strings.Contains(afterColon, "kv/data/")) {
+		(strings.Contains(afterColon, "secret/data/") || strings.Contains(afterColon, "kv/data/")) {
 		return true
 	}
 
@@ -305,8 +306,8 @@ func extractAnsibleVars(path string) []string {
 		endIdx += startIdx
 		varExpr := strings.TrimSpace(path[startIdx+2 : endIdx])
 		// Handle complex expressions: {{ vault_secret_path }}, {{ foo.bar }}, {{ baz | default('x') }}
-		varName := strings.Split(varExpr, "|")[0]  // Remove filters
-		varName = strings.Split(varName, ".")[0]   // Remove property access
+		varName := strings.Split(varExpr, "|")[0] // Remove filters
+		varName = strings.Split(varName, ".")[0]  // Remove property access
 		varName = strings.TrimSpace(varName)
 		if varName != "" {
 			vars = append(vars, varName)
@@ -318,10 +319,4 @@ func extractAnsibleVars(path string) []string {
 
 func containsWildcard(path string) bool {
 	return strings.Contains(path, "*") || strings.Contains(path, "+")
-}
-
-func isDynamicPath(path string) bool {
-	return strings.Contains(path, "{{") ||
-		strings.Contains(path, "${") ||
-		strings.Contains(path, "$")
 }

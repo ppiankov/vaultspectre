@@ -12,7 +12,7 @@ func TestParser_Parse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write sample audit log entries
 	auditLog := `{"time":"2026-01-23T10:00:00Z","type":"request","request":{"id":"123","operation":"read","path":"secret/data/test1","remote_address":"127.0.0.1","client_token":"hmac-123"}}
@@ -25,7 +25,7 @@ func TestParser_Parse(t *testing.T) {
 	if _, err := tmpFile.WriteString(auditLog); err != nil {
 		t.Fatalf("Failed to write audit log: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Parse the audit log
 	parser := NewParser(tmpFile.Name())

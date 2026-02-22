@@ -4,81 +4,173 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.3.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: make test
+
   release:
     name: Release
+    needs: test
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.version }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
 
-    - name: Run tests
-      run: make test
+      - name: Get project name
+        id: project
+        run: echo "name=$(basename $GITHUB_REPOSITORY)" >> $GITHUB_OUTPUT
 
-    - name: Build for multiple platforms
-      run: |
-        # Linux AMD64
-        GOOS=linux GOARCH=amd64 go build -o bin/vaultspectre-linux-amd64 ./cmd/vaultspectre
+      - name: Build and package binaries
+        run: |
+          VERSION=${{ steps.tag.outputs.version }}
+          VERSION_NUM=${VERSION#v}
+          PROJECT=${{ steps.project.outputs.name }}
+          COMMIT=$(git rev-parse --short HEAD)
+          LDFLAGS="-s -w -X github.com/ppiankov/vaultspectre/internal/commands.Version=${VERSION_NUM} -X github.com/ppiankov/vaultspectre/internal/commands.Commit=${COMMIT}"
 
-        # Linux ARM64
-        GOOS=linux GOARCH=arm64 go build -o bin/vaultspectre-linux-arm64 ./cmd/vaultspectre
+          platforms=(
+            "linux/amd64"
+            "linux/arm64"
+            "darwin/amd64"
+            "darwin/arm64"
+          )
 
-        # macOS AMD64
-        GOOS=darwin GOARCH=amd64 go build -o bin/vaultspectre-darwin-amd64 ./cmd/vaultspectre
+          mkdir -p dist staging
 
-        # macOS ARM64 (Apple Silicon)
-        GOOS=darwin GOARCH=arm64 go build -o bin/vaultspectre-darwin-arm64 ./cmd/vaultspectre
+          for platform in "${platforms[@]}"; do
+            GOOS="${platform%/*}"
+            GOARCH="${platform#*/}"
+            binary="${PROJECT}"
+            archive="${PROJECT}_${VERSION_NUM}_${GOOS}_${GOARCH}"
 
-        # Windows AMD64
-        GOOS=windows GOARCH=amd64 go build -o bin/vaultspectre-windows-amd64.exe ./cmd/vaultspectre
+            CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "staging/${binary}" ./cmd/${PROJECT}/
+            tar -czf "dist/${archive}.tar.gz" -C staging "${binary}"
+            rm -f "staging/${binary}"
+          done
 
-    - name: Create checksums
-      run: |
-        cd bin
-        sha256sum vaultspectre-* > checksums.txt
-        cat checksums.txt
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
 
-    - name: Extract release notes from CHANGELOG
-      id: changelog
-      run: |
-        # Extract the latest version section from CHANGELOG.md
-        VERSION="${GITHUB_REF#refs/tags/}"
-        echo "Extracting notes for $VERSION"
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          TAG=${{ steps.tag.outputs.version }}
+          VERSION=${TAG#v}
+          PROJECT=${{ steps.project.outputs.name }}
+          REPO=${{ github.repository }}
 
-        # Extract content between the version heading and the next version heading
-        awk '/^## \['"${VERSION#v}"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release_notes.md
+          CHANGELOG=$(awk "/^## \[${VERSION}\]/{found=1; next} /^## \[/{found=0} found" CHANGELOG.md 2>/dev/null || true)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release ${TAG}"
+          fi
 
-        # If extraction failed or is empty, use the tag annotation as fallback
-        if [ ! -s release_notes.md ]; then
-          echo "CHANGELOG extraction failed, using generated notes"
-          echo "generate_notes=true" >> $GITHUB_OUTPUT
-        else
-          echo "generate_notes=false" >> $GITHUB_OUTPUT
-        fi
+          {
+            echo "${CHANGELOG}"
+            echo ""
+            echo "## Install"
+            echo ""
+            echo '```bash'
+            echo "# Homebrew"
+            echo "brew install ppiankov/tap/${PROJECT}"
+            echo ""
+            echo "# macOS (Apple Silicon)"
+            echo "curl -LO https://github.com/${REPO}/releases/download/${TAG}/${PROJECT}_${VERSION}_darwin_arm64.tar.gz"
+            echo "tar -xzf ${PROJECT}_${VERSION}_darwin_arm64.tar.gz"
+            echo "sudo mv ${PROJECT} /usr/local/bin/"
+            echo ""
+            echo "# macOS (Intel)"
+            echo "curl -LO https://github.com/${REPO}/releases/download/${TAG}/${PROJECT}_${VERSION}_darwin_amd64.tar.gz"
+            echo "tar -xzf ${PROJECT}_${VERSION}_darwin_amd64.tar.gz"
+            echo "sudo mv ${PROJECT} /usr/local/bin/"
+            echo ""
+            echo "# Linux (amd64)"
+            echo "curl -LO https://github.com/${REPO}/releases/download/${TAG}/${PROJECT}_${VERSION}_linux_amd64.tar.gz"
+            echo "tar -xzf ${PROJECT}_${VERSION}_linux_amd64.tar.gz"
+            echo "sudo mv ${PROJECT} /usr/local/bin/"
+            echo '```'
+            echo ""
+            echo "**Verify checksums:** \`sha256sum -c checksums.txt\`"
+          } > /tmp/release-body.md
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        body_path: ${{ steps.changelog.outputs.generate_notes == 'false' && 'release_notes.md' || '' }}
-        generate_release_notes: ${{ steps.changelog.outputs.generate_notes == 'true' }}
-        files: |
-          bin/vaultspectre-linux-amd64
-          bin/vaultspectre-linux-arm64
-          bin/vaultspectre-darwin-amd64
-          bin/vaultspectre-darwin-arm64
-          bin/vaultspectre-windows-amd64.exe
-          bin/checksums.txt
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/release-body.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.version }}
+          body: ${{ steps.notes.outputs.notes }}
+          files: dist/*
+          generate_release_notes: false
+
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${{ steps.tag.outputs.version }}
+          VERSION_NUM=${VERSION#v}
+          PROJECT=${{ steps.project.outputs.name }}
+
+          SHA_DARWIN_ARM64=$(sha256sum dist/${PROJECT}_${VERSION_NUM}_darwin_arm64.tar.gz | awk '{print $1}')
+          SHA_DARWIN_AMD64=$(sha256sum dist/${PROJECT}_${VERSION_NUM}_darwin_amd64.tar.gz | awk '{print $1}')
+          SHA_LINUX_ARM64=$(sha256sum dist/${PROJECT}_${VERSION_NUM}_linux_arm64.tar.gz | awk '{print $1}')
+          SHA_LINUX_AMD64=$(sha256sum dist/${PROJECT}_${VERSION_NUM}_linux_amd64.tar.gz | awk '{print $1}')
+
+          sed -e "s/VERSION/${VERSION_NUM}/g" \
+              -e "s/SHA256_DARWIN_ARM64/${SHA_DARWIN_ARM64}/g" \
+              -e "s/SHA256_DARWIN_AMD64/${SHA_DARWIN_AMD64}/g" \
+              -e "s/SHA256_LINUX_ARM64/${SHA_LINUX_ARM64}/g" \
+              -e "s/SHA256_LINUX_AMD64/${SHA_LINUX_AMD64}/g" \
+              Formula/${PROJECT}.rb > /tmp/${PROJECT}.rb
+
+          if [ -n "$GH_TOKEN" ]; then
+            EXISTING_SHA=$(gh api repos/ppiankov/homebrew-tap/contents/Formula/${PROJECT}.rb --jq .sha 2>/dev/null || echo '')
+
+            if [ -n "$EXISTING_SHA" ]; then
+              gh api repos/ppiankov/homebrew-tap/contents/Formula/${PROJECT}.rb \
+                --method PUT \
+                --field message="Update ${PROJECT} to ${VERSION}" \
+                --field content="$(base64 -w0 /tmp/${PROJECT}.rb)" \
+                --field sha="${EXISTING_SHA}"
+            else
+              gh api repos/ppiankov/homebrew-tap/contents/Formula/${PROJECT}.rb \
+                --method PUT \
+                --field message="Add ${PROJECT} ${VERSION}" \
+                --field content="$(base64 -w0 /tmp/${PROJECT}.rb)"
+            fi
+          fi

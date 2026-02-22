@@ -3,6 +3,26 @@
 Find Vault secret references in code, verify they exist in Vault, and flag unused/stale paths before they break deployments.
 Part of the Spectre family of infrastructure cleanup tools.
 
+## Project Status
+
+**Status: Beta** · **v0.3.0** · Pre-1.0
+
+| Milestone | Status |
+|-----------|--------|
+| Multi-format repo scanner (Ansible, YAML, Terraform, Python, Bash, Go, K8s) | Complete |
+| Vault path validator (KV v1/v2) | Complete |
+| Unused/stale secret detection (metadata + audit logs) | Complete |
+| Variable resolution (--var, --var-file, --detect-vars) | Complete |
+| Multiple output modes (verbose, list-paths, summary, group-by-role) | Complete |
+| JSON + text reports (SpectreHub-compatible) | Complete |
+| CI pipeline (test/lint/security) | Complete |
+| Homebrew distribution | Complete |
+| Test coverage >60% | Pending |
+| API stability guarantees | Partial |
+| v1.0 release | Planned |
+
+Pre-1.0: CLI flags and config schemas may change between minor versions. JSON output structure is stable.
+
 ## Why VaultSpectre Exists
 
 HashiCorp Vault tells you what secrets exist.
@@ -71,6 +91,12 @@ Can fail the build if new missing/invalid paths appear.
 
 ## Installation
 
+### Homebrew (recommended)
+
+```bash
+brew install ppiankov/tap/vaultspectre
+```
+
 ### From Source
 
 ```bash
@@ -80,12 +106,6 @@ make build
 ```
 
 The binary will be in `./bin/vaultspectre`.
-
-### Install to GOPATH
-
-```bash
-make install
-```
 
 ## Usage
 

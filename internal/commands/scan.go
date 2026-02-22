@@ -284,7 +284,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	reportData := report.Data{
 		Tool:      "vaultspectre",
-		Version:   version,
+		Version:   Version,
 		Timestamp: startTime,
 		Config: report.Config{
 			VaultAddr:          vaultAddr,
@@ -415,7 +415,7 @@ func detectAnsibleVariables(repoPath string) (map[string]string, map[string]stri
 		for _, filePath := range matches {
 			// Skip example files
 			if strings.Contains(filepath.Base(filePath), "example") ||
-			   strings.Contains(filepath.Base(filePath), "sample") {
+				strings.Contains(filepath.Base(filePath), "sample") {
 				continue
 			}
 
