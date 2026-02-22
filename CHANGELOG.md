@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project status section in README
 - docs/context.txt for agent context
 - golangci-lint configuration (.golangci.yml)
+- Test suite: scanner (94.5%), analyzer (100%), report (96.2%), audit (81%), commands (29.9%), vault (19.5%) — 66.9% total
+- Agent Integration section in README
 
 ### Changed
 - Go version bumped from 1.21 to 1.25

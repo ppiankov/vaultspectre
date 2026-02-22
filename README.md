@@ -17,7 +17,7 @@ Part of the Spectre family of infrastructure cleanup tools.
 | JSON + text reports (SpectreHub-compatible) | Complete |
 | CI pipeline (test/lint/security) | Complete |
 | Homebrew distribution | Complete |
-| Test coverage >60% | Pending |
+| Test coverage >60% | Complete (66.9%) |
 | API stability guarantees | Partial |
 | v1.0 release | Planned |
 
@@ -106,6 +106,14 @@ make build
 ```
 
 The binary will be in `./bin/vaultspectre`.
+
+### Agent Integration
+
+vaultspectre is designed to be used by autonomous agents without plugins or SDKs. Single binary, deterministic output, structured JSON, bounded scans.
+
+Agents: read [`SKILL.md`](SKILL.md) for install, commands, JSON parsing patterns, and workflow examples.
+
+Key pattern for agents: `vaultspectre scan --output json` returns SpectreHub-compatible JSON with tool/version/timestamp header, status classifications, and health scores.
 
 ## Usage
 
