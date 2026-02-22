@@ -72,7 +72,7 @@ func init() {
 	scanCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	scanCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	scanCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
-	scanCmd.Flags().StringVar(&outputFormat, "output", "text", "Output format: text or json")
+	scanCmd.Flags().StringVar(&outputFormat, "output", "text", "Output format: text, json, or sarif")
 	scanCmd.Flags().BoolVar(&failOnMissing, "fail-on-missing", false, "Exit with error if missing secrets found")
 	scanCmd.Flags().BoolVar(&ignoreDynamic, "ignore-dynamic", true, "Ignore dynamic paths (with variables) in exit code")
 	scanCmd.Flags().IntVar(&staleDays, "stale-days", 90, "Days threshold for stale secret detection (0 to disable)")
@@ -268,9 +268,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Generate report
 	var reporter report.Reporter
-	if outputFormat == "json" {
+	switch outputFormat {
+	case "json":
 		reporter = report.NewJSONReporter(os.Stdout)
-	} else {
+	case "sarif":
+		reporter = report.NewSARIFReporter(os.Stdout)
+	default:
 		reporter = report.NewTextReporter(os.Stdout)
 	}
 

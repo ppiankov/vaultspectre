@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--verbose` maps to slog.LevelDebug, default is slog.LevelWarn
   - Structured fields: path count, secret count, stale count, scan duration, health score
   - No output without `--verbose` except warnings and errors
+- SARIF 2.1.0 output format (`--output sarif`) for GitHub Security tab
+  - Rule IDs: MISSING_SECRET, STALE_SECRET, ACCESS_DENIED, INVALID_PATH, ERROR
+  - Severity mapping: missing/invalid → error, access_denied/stale → warning
+  - Location tracking with file and line number
 - Connection resilience for Vault API calls (`internal/vault/retry.go`)
   - Exponential backoff with max 3 retries for transient errors (429, 5xx, network)
   - Auth errors (401, 403, permission denied) fail immediately
