@@ -6,12 +6,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.2.3"
+// Version and Commit are set via ldflags at build time.
+var (
+	Version = "dev"
+	Commit  = "none"
+)
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("VaultSpectre v%s\n", version)
+	Run: func(_ *cobra.Command, _ []string) {
+		fmt.Printf("vaultspectre %s (%s)\n", Version, Commit)
 	},
 }

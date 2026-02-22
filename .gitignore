@@ -1,10 +1,7 @@
 # Binaries
-/bin/
+bin/
+dist/
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 
 # Test binary, built with `go test -c`
 *.test
@@ -12,11 +9,11 @@
 # Output of the go coverage tool
 *.out
 
-# Dependency directories
-vendor/
-
 # Go workspace file
 go.work
+
+# Dependency directories
+vendor/
 
 # IDE
 .idea/
@@ -28,33 +25,9 @@ go.work
 # OS
 .DS_Store
 
-# Reports
-*.json
-/report/
+# Reports (generated during scanning)
 .spectre/
-
-# Reports (generated during testing)
 test-reports/
-test-*.txt
-test-*.json
-test-*.md
-test-*.sh
-*.json
-*.md
-*.txt
-!artifacts/**/*.json
-!artifacts/**/*.md
-!docs/**/*.md
-!README.md
-!PRINCIPLES.md
-!LICENSE
-!CHANGELOG.md
-!CONTRIBUTING.md
-!CLAUDE.md
-!FIELD_NOTES.md
-!SECURITY.md
-!VARIABLE_RESOLUTION.md
-!robots.txt
 
 # Claude Code
 .claude/

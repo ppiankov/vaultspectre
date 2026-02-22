@@ -1,39 +1,23 @@
-.PHONY: build test clean install fmt vet
+BINARY    := vaultspectre
+MODULE    := github.com/ppiankov/vaultspectre
+VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION_NUM := $(VERSION:v%=%)
+COMMIT    := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+LDFLAGS   := -X $(MODULE)/internal/commands.Version=$(VERSION_NUM) -X $(MODULE)/internal/commands.Commit=$(COMMIT)
 
-BINARY_NAME=vaultspectre
-BUILD_DIR=./bin
-CMD_DIR=./cmd/vaultspectre
+.PHONY: build test lint clean
 
 build:
-	@echo "Building $(BINARY_NAME)..."
-	@mkdir -p $(BUILD_DIR)
-	@go build -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)
-	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
-
-install:
-	@echo "Installing $(BINARY_NAME)..."
-	@go install $(CMD_DIR)
+	@mkdir -p bin
+	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/vaultspectre
 
 test:
-	@echo "Running tests..."
-	@go test -v ./...
+	go test -race -cover ./...
 
-fmt:
-	@echo "Formatting code..."
-	@go fmt ./...
-
-vet:
-	@echo "Vetting code..."
-	@go vet ./...
+lint:
+	golangci-lint run ./...
 
 clean:
-	@echo "Cleaning build artifacts..."
-	@rm -rf $(BUILD_DIR)
-	@echo "Clean complete"
+	rm -rf bin/ dist/
 
-deps:
-	@echo "Downloading dependencies..."
-	@go mod download
-	@go mod tidy
-
-all: fmt vet test build
+.DEFAULT_GOAL := build

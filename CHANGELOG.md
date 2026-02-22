@@ -5,21 +5,34 @@ All notable changes to VaultSpectre will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-02-22
 
-### Planned for v0.4
-- Concurrent Vault API calls with rate limiting
-- Configuration file support (`.vaultspectre.yaml`)
-- Exclude patterns for false positive filtering
-- Custom pattern injection
-- Secret ownership mapping
-- Usage dependency graphing
-- Multi-Vault support
-- Vault namespace hierarchy support
-- Limited dynamic template expansion
-- Secret rotation recommendations
-- SARIF output format for GitHub code scanning integration
-- Prometheus metrics export
+### Added
+- Homebrew distribution (`brew install ppiankov/tap/vaultspectre`)
+- Build-time version injection via LDFLAGS
+- Homebrew formula template (Formula/vaultspectre.rb)
+- Release workflow with tar.gz archives, checksums, and auto-tap update
+- Trivy security scanning in CI
+- Module tidy check in CI
+- Project status section in README
+- docs/context.txt for agent context
+- golangci-lint configuration (.golangci.yml)
+
+### Changed
+- Go version bumped from 1.21 to 1.25
+- CI updated: Go 1.25, golangci-lint-action@v7, Trivy
+- Makefile: added LDFLAGS, -race -cover on tests, lint target
+- Release: 4 platforms (dropped Windows), tar.gz (not flat binaries)
+- Version output format: `vaultspectre 0.3.0 (abc1234)`
+
+### Fixed
+- 9 lint errors (unchecked error returns, unused function, De Morgan's law)
+
+### Removed
+- Loose development docs from project root
+- spectre-doc/ planning directory
+- Historical MVP docs from docs/
+- Windows builds from release matrix
 
 ## [0.2.3] - 2026-02-06
 

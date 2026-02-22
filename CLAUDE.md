@@ -1,31 +1,33 @@
-# Project: vaultspectre
+# vaultspectre
 
-## Commands
-- `make build` — Build binary
-- `make test` — Run tests with race detection
-- `make lint` — Run golangci-lint
-- `make fmt` — Format with gofmt/goimports
-- `make clean` — Clean build artifacts
+Vault secret usage auditor. Scans code for Vault references, validates against Vault API, flags missing/unused/stale paths.
+
+## Build & Test
+
+```bash
+make build    # produces bin/vaultspectre (with LDFLAGS)
+make test     # go test -race -cover ./...
+make lint     # golangci-lint run ./...
+```
 
 ## Architecture
-- Entry: cmd/vaultspectre/main.go (minimal, delegates to internal/)
-- Internal packages: internal/
-- CLI framework: Cobra (spf13/cobra)
+
+- `cmd/vaultspectre/main.go` — entry point, delegates to `internal/commands`
+- `internal/commands/` — Cobra commands (scan, version)
+- `internal/scanner/` — multi-format repo scanner (Ansible, YAML, Terraform, Python, Bash, Go, K8s)
+- `internal/vault/` — Vault API client, path validator (KV v1/v2)
+- `internal/analyzer/` — result analysis, finding classification, health score
+- `internal/audit/` — Vault audit log parser, staleness detection
+- `internal/report/` — text and JSON formatters (SpectreHub-compatible)
 
 ## Conventions
-- Minimal main.go — single Execute() call
-- Internal packages: short single-word names (cache, cli, model, worker)
-- Struct-based domain models with json tags
-- Standard Go formatting (gofmt/goimports)
-- Version injected via LDFLAGS at build time
 
-## Anti-Patterns
-- NEVER use raw SQL without parameterization
-- NEVER skip error handling — always check returned errors
-- NEVER use init() functions unless absolutely necessary
-- NEVER use global mutable state
+- Go 1.25+, no CGO
+- LDFLAGS: `-X .../internal/commands.Version=$(VERSION_NUM)` — VERSION_NUM has no `v` prefix
+- Sources use `internal/scanner.Reference` struct with json tags
+- JSON output includes `tool`, `version`, `timestamp` for SpectreHub integration
+- Tests mandatory, -race flag
 
-## Verification
-- Run `make test` after code changes (includes -race)
-- Run `make lint` before marking complete
-- Run `go vet ./...` for suspicious constructs
+## Work Orders
+
+See `docs/work-orders.md` for pending WOs.

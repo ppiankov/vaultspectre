@@ -25,7 +25,7 @@ func (p *Parser) Parse(windowDays int) (AccessMap, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open audit log: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	accessMap := make(AccessMap)
 	scanner := bufio.NewScanner(file)
