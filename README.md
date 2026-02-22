@@ -97,6 +97,13 @@ Can fail the build if new missing/invalid paths appear.
 brew install ppiankov/tap/vaultspectre
 ```
 
+### Docker
+
+```bash
+docker run ghcr.io/ppiankov/vaultspectre version
+docker run ghcr.io/ppiankov/vaultspectre scan --repo /repo --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
+```
+
 ### From Source
 
 ```bash

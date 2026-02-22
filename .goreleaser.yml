@@ -1,0 +1,97 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: vaultspectre
+    main: ./cmd/vaultspectre
+    binary: vaultspectre
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/ppiankov/vaultspectre/internal/commands.Version={{.Version}}
+      - -X github.com/ppiankov/vaultspectre/internal/commands.Commit={{.ShortCommit}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - repository:
+      owner: ppiankov
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/ppiankov/vaultspectre"
+    description: "Vault secret usage auditor - find missing, unused, and stale secrets"
+    license: "MIT"
+    test: |
+      system "#{bin}/vaultspectre", "version"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/ppiankov/vaultspectre:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    dockerfile: Dockerfile.goreleaser
+    goarch: amd64
+  - image_templates:
+      - "ghcr.io/ppiankov/vaultspectre:{{ .Version }}-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    dockerfile: Dockerfile.goreleaser
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/ppiankov/vaultspectre:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/ppiankov/vaultspectre:{{ .Version }}-amd64"
+      - "ghcr.io/ppiankov/vaultspectre:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/ppiankov/vaultspectre:latest"
+    image_templates:
+      - "ghcr.io/ppiankov/vaultspectre:{{ .Version }}-amd64"
+      - "ghcr.io/ppiankov/vaultspectre:{{ .Version }}-arm64"
+
+release:
+  header: |
+    ## What's Changed
+  footer: |
+    ## Install
+
+    ```bash
+    # Homebrew
+    brew install ppiankov/tap/vaultspectre
+
+    # Docker
+    docker run ghcr.io/ppiankov/vaultspectre:{{ .Version }} version
+
+    # Binary (macOS Apple Silicon)
+    curl -LO https://github.com/ppiankov/vaultspectre/releases/download/v{{ .Version }}/vaultspectre_{{ .Version }}_darwin_arm64.tar.gz
+    tar -xzf vaultspectre_{{ .Version }}_darwin_arm64.tar.gz
+    sudo mv vaultspectre /usr/local/bin/
+    ```
+
+    **Verify checksums:** `sha256sum -c checksums.txt`

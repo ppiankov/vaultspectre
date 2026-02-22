@@ -1,0 +1,3 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY vaultspectre /usr/local/bin/vaultspectre
+ENTRYPOINT ["vaultspectre"]

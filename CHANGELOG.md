@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rule IDs: MISSING_SECRET, STALE_SECRET, ACCESS_DENIED, INVALID_PATH, ERROR
   - Severity mapping: missing/invalid → error, access_denied/stale → warning
   - Location tracking with file and line number
+- GoReleaser configuration for automated multi-platform releases
+  - Builds linux/darwin × amd64/arm64 with LDFLAGS
+  - tar.gz archives with checksums
+  - Conventional commit changelog generation
+- Docker image (`ghcr.io/ppiankov/vaultspectre`) via GoReleaser
+  - Multi-arch (amd64, arm64) with distroless base
+  - Standalone `Dockerfile` for local builds
+- Homebrew formula auto-published via GoReleaser brews section
 - Baseline mode for tracking new vs known findings (`internal/baseline` package)
   - `--baseline` flag loads existing baseline, filters known findings
   - `--update-baseline` saves current findings as new baseline
@@ -41,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `--timeout` flag to cap total retry window (default 30s)
 
 ### Changed
+- Release workflow replaced with GoReleaser (goreleaser-action@v6)
 - Go version bumped from 1.21 to 1.25
 - CI updated: Go 1.25, golangci-lint-action@v7, Trivy
 - Makefile: added LDFLAGS, -race -cover on tests, lint target
