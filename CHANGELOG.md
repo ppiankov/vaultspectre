@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - golangci-lint configuration (.golangci.yml)
 - Test suite: scanner (94.5%), analyzer (100%), report (96.2%), audit (81%), commands (29.9%), vault (19.5%) — 66.9% total
 - Agent Integration section in README
+- Structured logging via log/slog (`internal/logging` package)
+  - `--verbose` maps to slog.LevelDebug, default is slog.LevelWarn
+  - Structured fields: path count, secret count, stale count, scan duration, health score
+  - No output without `--verbose` except warnings and errors
 
 ### Changed
 - Go version bumped from 1.21 to 1.25

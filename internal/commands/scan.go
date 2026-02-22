@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/ppiankov/vaultspectre/internal/analyzer"
 	"github.com/ppiankov/vaultspectre/internal/audit"
+	"github.com/ppiankov/vaultspectre/internal/logging"
 	"github.com/ppiankov/vaultspectre/internal/report"
 	"github.com/ppiankov/vaultspectre/internal/scanner"
 	"github.com/ppiankov/vaultspectre/internal/vault"
@@ -86,6 +88,7 @@ func init() {
 
 func runScan(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
+	logging.Init(verbose)
 
 	// Validate required parameters
 	if vaultAddr == "" {
@@ -99,18 +102,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	s := scanner.New(repoPath)
 
 	// Scan repository for secret references
-	if outputFormat == "text" {
-		fmt.Fprintf(os.Stderr, "Scanning repository: %s\n", repoPath)
-	}
+	slog.Info("scanning repository", "path", repoPath)
 
 	references, err := s.Scan()
 	if err != nil {
 		return fmt.Errorf("failed to scan repository: %w", err)
 	}
 
-	if outputFormat == "text" {
-		fmt.Fprintf(os.Stderr, "Found %d secret references\n", len(references))
-	}
+	slog.Info("found secret references", "count", len(references))
 
 	// ROOTOPS: Resolve variables before validation
 	variables, variableSources, err := loadVariables(varFlags, varFile, detectVars, repoPath)
@@ -118,18 +117,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load variables: %w", err)
 	}
 
-	// Verbose: Show loaded variables and their sources
-	if verbose && outputFormat == "text" && len(variables) > 0 {
-		fmt.Fprintf(os.Stderr, "\nLoaded Variables (%d):\n", len(variables))
+	// Show loaded variables and their sources
+	if len(variables) > 0 {
+		slog.Debug("loaded variables", "count", len(variables))
 		for key, value := range variables {
 			source := variableSources[key]
 			if source == "" {
 				source = "unknown"
 			}
-			fmt.Fprintf(os.Stderr, "  %s = %s\n", key, value)
-			fmt.Fprintf(os.Stderr, "    source: %s\n", source)
+			slog.Debug("variable", "key", key, "value", value, "source", source)
 		}
-		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	resolver := scanner.NewResolver(variables)
@@ -156,38 +153,28 @@ func runScan(cmd *cobra.Command, args []string) error {
 	references, missingVarsMap := resolver.ResolveAll(references)
 
 	if len(missingVarsMap) > 0 {
-		fmt.Fprintf(os.Stderr, "\nWARNING: Some variables could not be resolved:\n")
+		vars := make([]string, 0, len(missingVarsMap))
 		for varName := range missingVarsMap {
-			fmt.Fprintf(os.Stderr, "  - %s\n", varName)
+			vars = append(vars, varName)
 		}
-		fmt.Fprintf(os.Stderr, "\n")
+		slog.Warn("some variables could not be resolved", "variables", strings.Join(vars, ", "))
 	}
 
 	resolvedCount := countResolvedRefs(references)
 	unresolvedCount := countUnresolvedRefs(references)
 
-	if outputFormat == "text" {
-		if resolvedCount > 0 {
-			fmt.Fprintf(os.Stderr, "Resolved %d paths with variables\n", resolvedCount)
-		}
-		if unresolvedCount > 0 {
-			fmt.Fprintf(os.Stderr, "WARNING: %d paths remain unresolved\n", unresolvedCount)
-		}
-
-		// Verbose: Show resolved paths
-		if verbose && resolvedCount > 0 {
-			fmt.Fprintf(os.Stderr, "\nResolved Paths:\n")
-			for _, ref := range references {
-				if ref.ResolvedPath != "" && ref.ResolvedPath != ref.Path {
-					fmt.Fprintf(os.Stderr, "  %s\n", ref.Path)
-					fmt.Fprintf(os.Stderr, "    → %s\n", ref.ResolvedPath)
-				}
-			}
-			fmt.Fprintf(os.Stderr, "\n")
-		}
-
-		fmt.Fprintf(os.Stderr, "Connecting to Vault: %s\n", vaultAddr)
+	if resolvedCount > 0 {
+		slog.Info("resolved variable paths", "count", resolvedCount)
 	}
+	if unresolvedCount > 0 {
+		slog.Warn("paths remain unresolved", "count", unresolvedCount)
+	}
+	for _, ref := range references {
+		if ref.ResolvedPath != "" && ref.ResolvedPath != ref.Path {
+			slog.Debug("resolved path", "original", ref.Path, "resolved", ref.ResolvedPath)
+		}
+	}
+	slog.Info("connecting to vault", "address", vaultAddr)
 
 	// Initialize Vault client
 	vaultClient, err := vault.NewClient(vault.Config{
@@ -202,20 +189,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Parse audit log if provided
 	var auditAnalyzer *audit.Analyzer
 	if auditLogPath != "" {
-		if outputFormat == "text" {
-			fmt.Fprintf(os.Stderr, "Parsing audit log: %s\n", auditLogPath)
-		}
+		slog.Info("parsing audit log", "path", auditLogPath)
 
 		auditParser := audit.NewParser(auditLogPath)
 		accessMap, err := auditParser.Parse(auditWindowDays)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to parse audit log: %v\n", err)
-			fmt.Fprintf(os.Stderr, "Continuing with metadata-only staleness detection...\n")
+			slog.Warn("failed to parse audit log, continuing with metadata-only staleness detection", "error", err)
 		} else {
 			auditAnalyzer = audit.NewAnalyzer(accessMap)
-			if outputFormat == "text" {
-				fmt.Fprintf(os.Stderr, "Found %d unique paths in audit log\n", auditAnalyzer.GetTotalPaths())
-			}
+			slog.Info("audit log parsed", "unique_paths", auditAnalyzer.GetTotalPaths())
 		}
 	}
 
@@ -228,9 +210,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate each secret reference
-	if outputFormat == "text" {
-		fmt.Fprintf(os.Stderr, "Validating secret paths...\n")
-	}
+	slog.Info("validating secret paths")
 
 	for i := range references {
 		// ROOTOPS: Only validate paths that are ready (resolved or static)
@@ -267,6 +247,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Analyze results
 	a := analyzer.New(references)
 	results := a.Analyze()
+
+	slog.Info("analysis complete",
+		"total", results.Summary.TotalReferences,
+		"ok", results.Summary.StatusOK,
+		"missing", results.Summary.StatusMissing,
+		"stale", results.Summary.StaleSecrets,
+		"health", results.Summary.HealthScore,
+		"duration", time.Since(startTime).Round(time.Millisecond),
+	)
 
 	// Handle --list-paths mode: output simple list and exit
 	if listPaths {
@@ -352,7 +341,7 @@ func loadVariables(varFlags []string, varFile string, detectVars bool, repoPath 
 	if detectVars {
 		detectedVars, detectedSources, err := detectAnsibleVariables(repoPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: auto-detection failed: %v\n", err)
+			slog.Warn("variable auto-detection failed", "error", err)
 		} else {
 			// Merge detected vars (explicit flags take precedence)
 			for k, v := range detectedVars {
@@ -361,7 +350,7 @@ func loadVariables(varFlags []string, varFile string, detectVars bool, repoPath 
 					sources[k] = detectedSources[k]
 				}
 			}
-			fmt.Fprintf(os.Stderr, "Auto-detected %d variables from Ansible inventory\n", len(detectedVars))
+			slog.Info("auto-detected variables from ansible inventory", "count", len(detectedVars))
 		}
 	}
 
