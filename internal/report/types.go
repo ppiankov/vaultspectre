@@ -31,4 +31,5 @@ type Config struct {
 	Verbose            bool   `json:"verbose,omitempty"`
 	SummaryOnly        bool   `json:"summary_only,omitempty"`
 	GroupByRole        bool   `json:"group_by_role,omitempty"`
+	FailOnMissing      bool   `json:"fail_on_missing,omitempty"`
 }

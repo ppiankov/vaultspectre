@@ -106,6 +106,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if cfgSource != "" {
 		slog.Info("loaded config file", "path", cfgSource)
 		applyConfig(cmd, cfg)
+	} else {
+		slog.Debug("no config file found; create .vaultspectre.yaml to set persistent defaults")
 	}
 
 	// Validate required parameters
@@ -326,6 +328,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			Verbose:            verbose,
 			SummaryOnly:        summaryOnly,
 			GroupByRole:        groupByRole,
+			FailOnMissing:      failOnMissing,
 		},
 		Summary:    results.Summary,
 		Secrets:    results.Secrets,

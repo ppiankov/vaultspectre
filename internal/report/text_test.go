@@ -143,6 +143,11 @@ func TestTextReporter_Generate_FullReport(t *testing.T) {
 	if !strings.Contains(output, "Access Denied (1)") {
 		t.Error("missing 'Access Denied' section")
 	}
+
+	// Exit code hint (no --fail-on-missing)
+	if !strings.Contains(output, "Hint: Use --fail-on-missing") {
+		t.Error("missing exit code hint when issues found")
+	}
 }
 
 func TestTextReporter_Generate_SummaryOnly(t *testing.T) {
@@ -393,6 +398,90 @@ func TestTextReporter_Generate_ErrorSecrets(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "Errors:") {
 		t.Error("missing Errors count in summary")
+	}
+}
+
+func TestTextReporter_Generate_NoIssues(t *testing.T) {
+	data := Data{
+		Tool:      "vaultspectre",
+		Version:   "0.3.0",
+		Timestamp: time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC),
+		Config: Config{
+			VaultAddr: "https://vault.example.com",
+			RepoPath:  "/opt/ansible",
+		},
+		Summary: analyzer.Summary{
+			TotalReferences: 3,
+			StatusOK:        3,
+			HealthScore:     "excellent",
+		},
+		Secrets: map[string]*analyzer.SecretInfo{},
+	}
+
+	var buf bytes.Buffer
+	r := NewTextReporter(&buf)
+	err := r.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No issues detected. 3 paths validated.") {
+		t.Error("missing no-issues positive message")
+	}
+	if !strings.Contains(output, "EXCELLENT") {
+		t.Error("missing excellent health score")
+	}
+	// Should NOT have exit code hint
+	if strings.Contains(output, "Hint:") {
+		t.Error("should not show exit code hint when no issues")
+	}
+}
+
+func TestTextReporter_Generate_FailOnMissing(t *testing.T) {
+	data := Data{
+		Tool:      "vaultspectre",
+		Version:   "0.3.0",
+		Timestamp: time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC),
+		Config: Config{
+			VaultAddr:     "https://vault.example.com",
+			RepoPath:      "/opt/ansible",
+			FailOnMissing: true,
+		},
+		Summary: analyzer.Summary{
+			TotalReferences: 2,
+			StatusOK:        1,
+			StatusMissing:   1,
+			HealthScore:     "critical",
+		},
+		Secrets: map[string]*analyzer.SecretInfo{
+			"secret/data/gone": {
+				Path:   "secret/data/gone",
+				Status: "missing",
+				References: []scanner.Reference{
+					{Path: "secret/data/gone", File: "deploy.yml", Line: 5, Type: "ansible_lookup", Status: "missing"},
+				},
+			},
+		},
+		References: []scanner.Reference{
+			{Path: "secret/data/gone", File: "deploy.yml", Line: 5, Type: "ansible_lookup", Status: "missing"},
+		},
+	}
+
+	var buf bytes.Buffer
+	r := NewTextReporter(&buf)
+	err := r.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Exit code 1: 1 issue(s) found with --fail-on-missing enabled.") {
+		t.Error("missing exit code 1 message when --fail-on-missing enabled")
+	}
+	// Should NOT have the hint
+	if strings.Contains(output, "Hint: Use --fail-on-missing") {
+		t.Error("should show exit code message, not hint, when --fail-on-missing enabled")
 	}
 }
 

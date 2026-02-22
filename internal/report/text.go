@@ -87,6 +87,13 @@ func (r *TextReporter) Generate(data Data) error {
 		fmt.Fprintf(r.writer, "  Note: %d paths skipped (not errors, cannot validate statically)\n\n", skippedCount)
 	}
 
+	// No-findings positive message
+	issueCount := data.Summary.StatusMissing + data.Summary.StatusAccessDenied +
+		data.Summary.StatusInvalid + data.Summary.StatusError
+	if issueCount == 0 && data.Summary.StaleSecrets == 0 && validatedCount > 0 {
+		fmt.Fprintf(r.writer, "  No issues detected. %d paths validated.\n\n", validatedCount)
+	}
+
 	// If summary-only mode, skip detailed results
 	if data.Config.SummaryOnly {
 		return nil
@@ -137,6 +144,17 @@ func (r *TextReporter) Generate(data Data) error {
 		fmt.Fprintf(r.writer, "Invalid Paths (%d)\n", data.Summary.StatusInvalid)
 		fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n")
 		r.printSecretsByStatus(data, "invalid")
+		fmt.Fprintf(r.writer, "\n")
+	}
+
+	// Exit code hints when issues are found
+	if issueCount > 0 {
+		fmt.Fprintf(r.writer, "───────────────────────────────────────────────────────────────\n")
+		if data.Config.FailOnMissing {
+			fmt.Fprintf(r.writer, "Exit code 1: %d issue(s) found with --fail-on-missing enabled.\n", issueCount)
+		} else {
+			fmt.Fprintf(r.writer, "Hint: Use --fail-on-missing to exit with code 1 when issues are found.\n")
+		}
 		fmt.Fprintf(r.writer, "\n")
 	}
 
