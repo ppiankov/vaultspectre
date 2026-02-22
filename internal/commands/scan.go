@@ -10,6 +10,7 @@ import (
 
 	"github.com/ppiankov/vaultspectre/internal/analyzer"
 	"github.com/ppiankov/vaultspectre/internal/audit"
+	"github.com/ppiankov/vaultspectre/internal/config"
 	"github.com/ppiankov/vaultspectre/internal/logging"
 	"github.com/ppiankov/vaultspectre/internal/report"
 	"github.com/ppiankov/vaultspectre/internal/scanner"
@@ -91,6 +92,16 @@ func init() {
 func runScan(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 	logging.Init(verbose)
+
+	// Load config file (values apply only when CLI flag not explicitly set)
+	cfg, cfgSource, err := config.Load()
+	if err != nil {
+		slog.Warn("failed to load config file", "error", err)
+	}
+	if cfgSource != "" {
+		slog.Info("loaded config file", "path", cfgSource)
+		applyConfig(cmd, cfg)
+	}
 
 	// Validate required parameters
 	if vaultAddr == "" {
@@ -462,6 +473,31 @@ func parseAnsibleVarsFile(filePath string) (map[string]string, error) {
 	}
 
 	return variables, nil
+}
+
+// applyConfig applies config file values for flags not explicitly set on the CLI.
+func applyConfig(cmd *cobra.Command, cfg config.Config) {
+	if cfg.VaultAddr != "" && !cmd.Flags().Changed("vault-addr") && vaultAddr == "" {
+		vaultAddr = cfg.VaultAddr
+	}
+	if cfg.VaultNamespace != "" && !cmd.Flags().Changed("namespace") && vaultNamespace == "" {
+		vaultNamespace = cfg.VaultNamespace
+	}
+	if cfg.Output != "" && !cmd.Flags().Changed("output") {
+		outputFormat = cfg.Output
+	}
+	if cfg.StaleDays != 0 && !cmd.Flags().Changed("stale-days") {
+		staleDays = cfg.StaleDays
+	}
+	if cfg.Timeout != 0 && !cmd.Flags().Changed("timeout") {
+		timeoutSeconds = cfg.Timeout
+	}
+	if cfg.DetectVars && !cmd.Flags().Changed("detect-vars") {
+		detectVars = cfg.DetectVars
+	}
+	if cfg.FailOnMissing && !cmd.Flags().Changed("fail-on-missing") {
+		failOnMissing = cfg.FailOnMissing
+	}
 }
 
 // countRefsNeedingResolution counts references that need variable resolution
