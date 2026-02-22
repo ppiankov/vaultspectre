@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exponential backoff with max 3 retries for transient errors (429, 5xx, network)
   - Auth errors (401, 403, permission denied) fail immediately
   - New `--timeout` flag to cap total retry window (default 30s)
+- First-run experience improvements (`internal/report/text.go`)
+  - No-issues positive message when all paths validated successfully
+  - Exit code hints: context-aware messaging for `--fail-on-missing`
+  - Config file suggestion when no `.vaultspectre.yaml` detected (verbose mode)
+- SpectreHub `spectre/v1` envelope output (`--output spectrehub`)
+  - Canonical spectre/v1 JSON envelope for SpectreHub aggregation
+  - Status-to-severity mapping: missing→high, access_denied/invalid→medium, stale→low, dynamic→info
+  - SHA-256 hashed Vault address in target field
+  - Only non-OK secrets appear as findings
 
 ### Changed
 - Release workflow replaced with GoReleaser (goreleaser-action@v6)
