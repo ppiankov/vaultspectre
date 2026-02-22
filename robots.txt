@@ -1,2 +1,0 @@
-oUser-agent: *
-Allow: /
