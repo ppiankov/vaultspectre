@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rule IDs: MISSING_SECRET, STALE_SECRET, ACCESS_DENIED, INVALID_PATH, ERROR
   - Severity mapping: missing/invalid → error, access_denied/stale → warning
   - Location tracking with file and line number
+- Baseline mode for tracking new vs known findings (`internal/baseline` package)
+  - `--baseline` flag loads existing baseline, filters known findings
+  - `--update-baseline` saves current findings as new baseline
+  - SHA-256 fingerprints from finding status + path
+  - Suppressed count logged when baseline applied
 - Config file support (`.vaultspectre.yaml` in CWD or `~/.vaultspectre.yaml`)
   - Fields: vault_addr, vault_namespace, output, stale_days, timeout, exclude_patterns, detect_vars, fail_on_missing
   - CLI flags take precedence over config file values

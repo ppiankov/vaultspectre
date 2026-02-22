@@ -10,6 +10,7 @@ import (
 
 	"github.com/ppiankov/vaultspectre/internal/analyzer"
 	"github.com/ppiankov/vaultspectre/internal/audit"
+	"github.com/ppiankov/vaultspectre/internal/baseline"
 	"github.com/ppiankov/vaultspectre/internal/config"
 	"github.com/ppiankov/vaultspectre/internal/logging"
 	"github.com/ppiankov/vaultspectre/internal/report"
@@ -38,6 +39,8 @@ var (
 	summaryOnly     bool     // --summary-only flag
 	groupByRole     bool     // --group-by-role flag
 	timeoutSeconds  int      // --timeout flag (seconds)
+	baselinePath    string   // --baseline flag
+	updateBaseline  bool     // --update-baseline flag
 )
 
 var scanCmd = &cobra.Command{
@@ -87,6 +90,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&summaryOnly, "summary-only", false, "Show only the summary, skip detailed results")
 	scanCmd.Flags().BoolVar(&groupByRole, "group-by-role", false, "Group secrets by role/component in the report")
 	scanCmd.Flags().IntVar(&timeoutSeconds, "timeout", 30, "Timeout in seconds for Vault API calls (includes retry window)")
+	scanCmd.Flags().StringVar(&baselinePath, "baseline", "", "Path to baseline file for suppressing known findings")
+	scanCmd.Flags().BoolVar(&updateBaseline, "update-baseline", false, "Save current findings as new baseline")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -255,6 +260,28 @@ func runScan(cmd *cobra.Command, args []string) error {
 				references[i].IsStale = isStale
 				references[i].LastAccessed = lastAccessed
 			}
+		}
+	}
+
+	// Update baseline if requested (before filtering)
+	if updateBaseline && baselinePath != "" {
+		b := baseline.FromRefs(references, Version)
+		if err := b.Save(baselinePath); err != nil {
+			return fmt.Errorf("failed to save baseline: %w", err)
+		}
+		slog.Info("baseline saved", "path", baselinePath, "fingerprints", len(b.Fingerprints))
+	}
+
+	// Filter known findings if baseline provided
+	var suppressed int
+	if baselinePath != "" && !updateBaseline {
+		b, err := baseline.Load(baselinePath)
+		if err != nil {
+			return fmt.Errorf("failed to load baseline: %w", err)
+		}
+		references, suppressed = b.Filter(references)
+		if suppressed > 0 {
+			slog.Info("baseline applied", "suppressed", suppressed)
 		}
 	}
 
