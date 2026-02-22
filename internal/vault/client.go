@@ -2,21 +2,26 @@ package vault
 
 import (
 	"fmt"
+	"time"
 
 	vault "github.com/hashicorp/vault/api"
 )
+
+const defaultTimeout = 30 * time.Second
 
 // Config holds Vault client configuration
 type Config struct {
 	Address   string
 	Token     string
 	Namespace string
+	Timeout   time.Duration
 }
 
-// Client wraps the Vault API client
+// Client wraps the Vault API client with retry support
 type Client struct {
-	client *vault.Client
-	config Config
+	client  *vault.Client
+	config  Config
+	timeout time.Duration
 }
 
 // NewClient creates a new Vault client
@@ -35,19 +40,30 @@ func NewClient(cfg Config) (*Client, error) {
 		client.SetNamespace(cfg.Namespace)
 	}
 
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+
 	return &Client{
-		client: client,
-		config: cfg,
+		client:  client,
+		config:  cfg,
+		timeout: timeout,
 	}, nil
 }
 
-// Read reads a secret from the given path
+// Read reads a secret from the given path with automatic retry for transient errors.
 func (c *Client) Read(path string) (*vault.Secret, error) {
-	secret, err := c.client.Logical().Read(path)
-	if err != nil {
-		return nil, err
-	}
-	return secret, nil
+	var result *vault.Secret
+	err := withRetry(c.timeout, func() error {
+		secret, readErr := c.client.Logical().Read(path)
+		if readErr != nil {
+			return readErr
+		}
+		result = secret
+		return nil
+	})
+	return result, err
 }
 
 // GetMetadata gets metadata for a KV v2 secret

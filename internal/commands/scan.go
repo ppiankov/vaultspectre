@@ -36,6 +36,7 @@ var (
 	listPaths       bool     // --list-paths flag
 	summaryOnly     bool     // --summary-only flag
 	groupByRole     bool     // --group-by-role flag
+	timeoutSeconds  int      // --timeout flag (seconds)
 )
 
 var scanCmd = &cobra.Command{
@@ -84,6 +85,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&listPaths, "list-paths", false, "Output simple list of resolved paths only (one per line)")
 	scanCmd.Flags().BoolVar(&summaryOnly, "summary-only", false, "Show only the summary, skip detailed results")
 	scanCmd.Flags().BoolVar(&groupByRole, "group-by-role", false, "Group secrets by role/component in the report")
+	scanCmd.Flags().IntVar(&timeoutSeconds, "timeout", 30, "Timeout in seconds for Vault API calls (includes retry window)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -181,6 +183,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Address:   vaultAddr,
 		Token:     vaultToken,
 		Namespace: vaultNamespace,
+		Timeout:   time.Duration(timeoutSeconds) * time.Second,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create Vault client: %w", err)

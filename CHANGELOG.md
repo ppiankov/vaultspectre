@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--verbose` maps to slog.LevelDebug, default is slog.LevelWarn
   - Structured fields: path count, secret count, stale count, scan duration, health score
   - No output without `--verbose` except warnings and errors
+- Connection resilience for Vault API calls (`internal/vault/retry.go`)
+  - Exponential backoff with max 3 retries for transient errors (429, 5xx, network)
+  - Auth errors (401, 403, permission denied) fail immediately
+  - New `--timeout` flag to cap total retry window (default 30s)
 
 ### Changed
 - Go version bumped from 1.21 to 1.25
