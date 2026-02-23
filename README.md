@@ -105,6 +105,19 @@ docker run ghcr.io/ppiankov/vaultspectre version
 docker run ghcr.io/ppiankov/vaultspectre scan --repo /repo --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
 ```
 
+### GitHub Action
+
+```yaml
+- uses: ppiankov/vaultspectre-action@v1
+  with:
+    vault-addr: ${{ secrets.VAULT_ADDR }}
+    token: ${{ secrets.VAULT_TOKEN }}
+    format: sarif
+    upload-sarif: 'true'
+```
+
+See [vaultspectre-action](https://github.com/ppiankov/vaultspectre-action) for full documentation.
+
 ### From Source
 
 ```bash

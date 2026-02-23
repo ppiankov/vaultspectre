@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Status-to-severity mapping: missing→high, access_denied/invalid→medium, stale→low, dynamic→info
   - SHA-256 hashed Vault address in target field
   - Only non-OK secrets appear as findings
+- GitHub Action (`ppiankov/vaultspectre-action@v1`)
+  - Composite action: downloads binary, runs scan, uploads SARIF
+  - Inputs: vault-addr, token, format, fail-on-missing, baseline, version, args
+  - Exit code passthrough (0=ok, 1=issues, 2=error)
 
 ### Changed
 - Release workflow replaced with GoReleaser (goreleaser-action@v6)
