@@ -1,4 +1,5 @@
 # VaultSpectre
+[![ANCC](https://img.shields.io/badge/ANCC-compliant-brightgreen)](https://ancc.dev)
 
 Find Vault secret references in code, verify they exist in Vault, and flag unused/stale paths before they break deployments.
 Part of the Spectre family of infrastructure cleanup tools.
