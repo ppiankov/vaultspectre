@@ -6,6 +6,12 @@
 
 Find Vault secret references in code, verify they exist in Vault, and flag unused/stale paths before they break deployments. Part of [SpectreHub](https://github.com/ppiankov/spectrehub).
 
+## Why this exists
+
+HashiCorp Vault tells you what secrets exist. Your codebase tells you what secrets are referenced. Neither tells you which secrets are **actually still needed**.
+
+VaultSpectre bridges that gap — correlating secret references in code with live Vault state and audit logs. It is designed for teams who inherit Vault instances, want to clean them up safely, and would prefer not to cause a production incident in the process.
+
 ## What it is
 
 - Scans codebases for Vault secret references across Ansible, YAML, Terraform, Python, Bash, Go, and Kubernetes manifests
