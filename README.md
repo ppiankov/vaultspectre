@@ -1,9 +1,10 @@
-# vaultspectre
+# VaultSpectre
 
 [![CI](https://github.com/ppiankov/vaultspectre/actions/workflows/ci.yml/badge.svg)](https://github.com/ppiankov/vaultspectre/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ppiankov/vaultspectre)](https://goreportcard.com/report/github.com/ppiankov/vaultspectre)
+[![ANCC](https://img.shields.io/badge/ANCC-compliant-brightgreen)](https://ancc.dev)
 
-**vaultspectre** — Vault secret reference scanner and drift detector. Part of [SpectreHub](https://github.com/ppiankov/spectrehub).
+Find Vault secret references in code, verify they exist in Vault, and flag unused/stale paths before they break deployments. Part of [SpectreHub](https://github.com/ppiankov/spectrehub).
 
 ## What it is
 
@@ -11,7 +12,7 @@
 - Validates that referenced paths exist in Vault (KV v1/v2)
 - Detects unused and stale secrets via metadata and audit logs
 - Supports variable resolution from files, CLI flags, and Ansible auto-detection
-- Outputs text, JSON, and SpectreHub formats
+- Outputs text, JSON, SARIF, and SpectreHub formats
 
 ## What it is NOT
 
@@ -22,37 +23,32 @@
 
 ## Quick start
 
-### Homebrew
+```bash
+# Install
+brew install ppiankov/tap/vaultspectre
 
-```sh
-brew tap ppiankov/tap
-brew install vaultspectre
+# Scan a repository
+vaultspectre scan \
+  --repo ./my-repo \
+  --vault-addr https://vault.example.com \
+  --token $VAULT_TOKEN
+
+# JSON output for CI/CD
+vaultspectre scan --repo . --vault-addr $VAULT_ADDR --token $VAULT_TOKEN --output json
+
+# Fail on missing secrets
+vaultspectre scan --repo . --vault-addr $VAULT_ADDR --token $VAULT_TOKEN --fail-on-missing
 ```
 
-### From source
+## Agent integration
 
-```sh
-git clone https://github.com/ppiankov/vaultspectre.git
-cd vaultspectre
-make build
-```
+Single binary, deterministic output, structured JSON, bounded scans.
 
-### Usage
+Agents: read [`SKILL.md`](SKILL.md) for commands, JSON parsing patterns, and workflow examples.
 
-```sh
-vaultspectre scan --repo . --vault-addr https://vault.example.com
-```
-
-## CLI commands
-
-| Command | Description |
-|---------|-------------|
-| `vaultspectre scan` | Scan code for Vault references and validate against live Vault |
-| `vaultspectre version` | Print version |
+Key pattern: `vaultspectre scan --output json` returns SpectreHub-compatible JSON with status classifications and health scores.
 
 ## SpectreHub integration
-
-vaultspectre feeds Vault drift findings into [SpectreHub](https://github.com/ppiankov/spectrehub) for unified visibility across your infrastructure.
 
 ```sh
 spectrehub collect --tool vaultspectre
@@ -60,7 +56,13 @@ spectrehub collect --tool vaultspectre
 
 ## Safety
 
-vaultspectre operates in **read-only mode**. It inspects and reports — never writes, rotates, or deletes your secrets.
+vaultspectre operates in **read-only mode** — never writes, rotates, or deletes your secrets.
+
+## Documentation
+
+| Document | Contents |
+|----------|----------|
+| [CLI Reference](docs/cli-reference.md) | All flags, config, scanner coverage, status classifications, installation |
 
 ## License
 
@@ -68,4 +70,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-Built by [Obsta Labs](https://github.com/ppiankov)
+Built by [Obsta Labs](https://obstalabs.dev)
