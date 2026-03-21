@@ -76,7 +76,8 @@ func init() {
 	scanCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	scanCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	scanCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
-	scanCmd.Flags().StringVar(&outputFormat, "output", "text", "Output format: text, json, sarif, or spectrehub")
+	scanCmd.Flags().StringVar(&outputFormat, "format", "text", "Output format: text, json, sarif, or spectrehub")
+	scanCmd.Flags().StringVar(&outputFormat, "output", "text", "Output format (deprecated, use --format)")
 	scanCmd.Flags().BoolVar(&failOnMissing, "fail-on-missing", false, "Exit with error if missing secrets found")
 	scanCmd.Flags().BoolVar(&ignoreDynamic, "ignore-dynamic", true, "Ignore dynamic paths (with variables) in exit code")
 	scanCmd.Flags().IntVar(&staleDays, "stale-days", 90, "Days threshold for stale secret detection (0 to disable)")
@@ -515,7 +516,9 @@ func applyConfig(cmd *cobra.Command, cfg config.Config) {
 	if cfg.VaultNamespace != "" && !cmd.Flags().Changed("namespace") && vaultNamespace == "" {
 		vaultNamespace = cfg.VaultNamespace
 	}
-	if cfg.Output != "" && !cmd.Flags().Changed("output") {
+	if cfg.Format != "" && !cmd.Flags().Changed("format") && !cmd.Flags().Changed("output") {
+		outputFormat = cfg.Format
+	} else if cfg.Output != "" && !cmd.Flags().Changed("format") && !cmd.Flags().Changed("output") {
 		outputFormat = cfg.Output
 	}
 	if cfg.StaleDays != 0 && !cmd.Flags().Changed("stale-days") {

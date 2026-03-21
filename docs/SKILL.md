@@ -21,10 +21,9 @@ go install github.com/ppiankov/vaultspectre/cmd/vaultspectre@latest
 Scans Vault secrets engine for security findings.
 
 **Flags:**
-- `--format json` — output as JSON (ANCC standard, alias for --output json)
-- `--output json` — output as JSON (spectre/v1 envelope)
-- `--output sarif` — SARIF format for CI integration
-- `--output spectrehub` — SpectreHub aggregator format
+- `--format json` — output as JSON (spectre/v1 envelope)
+- `--format sarif` — SARIF format for CI integration
+- `--format spectrehub` — SpectreHub aggregator format
 - `--baseline path` — suppress known findings
 
 **JSON output:**
@@ -86,8 +85,8 @@ Initialize configuration with sensible defaults.
 ## Parsing examples
 
 ```bash
-vaultspectre scan --output json | jq '.summary'
-vaultspectre scan --output json | jq '.findings[] | select(.severity == "critical")'
+vaultspectre scan --format json | jq '.summary'
+vaultspectre scan --format json | jq '.findings[] | select(.severity == "critical")'
 ```
 
 ---

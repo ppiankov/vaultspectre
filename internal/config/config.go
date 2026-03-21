@@ -11,6 +11,7 @@ import (
 type Config struct {
 	VaultAddr       string   `yaml:"vault_addr"`
 	VaultNamespace  string   `yaml:"vault_namespace"`
+	Format          string   `yaml:"format"`
 	Output          string   `yaml:"output"`
 	StaleDays       int      `yaml:"stale_days"`
 	Timeout         int      `yaml:"timeout"`
