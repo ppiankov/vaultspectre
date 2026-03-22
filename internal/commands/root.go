@@ -21,4 +21,5 @@ func Execute() error {
 func init() {
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(initCmd)
 }
