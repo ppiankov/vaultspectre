@@ -13,12 +13,16 @@ import (
 
 	"github.com/ppiankov/vaultspectre/internal/config"
 	"github.com/ppiankov/vaultspectre/internal/logging"
+	"github.com/ppiankov/vaultspectre/internal/notify"
 	"github.com/ppiankov/vaultspectre/internal/scanner"
 	"github.com/ppiankov/vaultspectre/internal/vault"
 	"github.com/spf13/cobra"
 )
 
-var watchInterval time.Duration
+var (
+	watchInterval   time.Duration
+	slackWebhookURL string
+)
 
 var watchCmd = &cobra.Command{
 	Use:   "watch",
@@ -50,6 +54,7 @@ func init() {
 	watchCmd.Flags().IntVar(&staleDays, "stale-days", 90, "Stale secret threshold in days")
 	watchCmd.Flags().IntVar(&timeoutSeconds, "timeout", 30, "Vault API timeout in seconds")
 	watchCmd.Flags().BoolVar(&verbose, "verbose", false, "Verbose output")
+	watchCmd.Flags().StringVar(&slackWebhookURL, "slack-webhook", "", "Slack webhook URL for notifications")
 }
 
 // watchFinding is a simplified representation for delta comparison
@@ -100,6 +105,17 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 		return newExitError(ExitBadArgs, "vault token is required")
 	}
 
+	// Set up notifier
+	webhookURL := slackWebhookURL
+	if webhookURL == "" {
+		webhookURL = cfg.SlackWebhookURL
+	}
+	var notifier notify.Notifier
+	if webhookURL != "" {
+		notifier = notify.NewSlackNotifier(webhookURL)
+		slog.Info("slack notifications enabled")
+	}
+
 	slog.Info("starting watch mode", "interval", watchInterval, "repo", repoPath)
 
 	var prevFindings map[string]watchFinding
@@ -118,6 +134,23 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 			reportWatchDelta(delta)
 			if len(delta.New) > 0 {
 				everFoundIssues = true
+			}
+
+			// Send notification if configured
+			if notifier != nil && (len(delta.New) > 0 || len(delta.Resolved) > 0) {
+				event := notify.Event{
+					RepoPath: repoPath,
+					Total:    delta.Total,
+				}
+				for _, f := range delta.New {
+					event.New = append(event.New, notify.Finding{Path: f.Path, Status: f.Status, File: f.File})
+				}
+				for _, f := range delta.Resolved {
+					event.Resolved = append(event.Resolved, notify.Finding{Path: f.Path, Status: f.Status, File: f.File})
+				}
+				if err := notifier.Notify(event); err != nil {
+					slog.Warn("notification failed", "error", err)
+				}
 			}
 		} else {
 			slog.Info("initial scan complete", "findings", len(currentFindings))

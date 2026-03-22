@@ -18,6 +18,7 @@ type Config struct {
 	ExcludePatterns []string `yaml:"exclude_patterns"`
 	DetectVars      bool     `yaml:"detect_vars"`
 	FailOnMissing   bool     `yaml:"fail_on_missing"`
+	SlackWebhookURL string   `yaml:"slack_webhook_url"`
 }
 
 // Load reads config from .vaultspectre.yaml in CWD, then ~/.vaultspectre.yaml.
