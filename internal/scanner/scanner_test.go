@@ -846,3 +846,74 @@ func TestDetectVariables_PackageLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestNewWithExcludes_SkipsMatchedFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// File that should be scanned (uses bash vault read pattern)
+	writeFile(t, dir, "deploy.sh", "#!/bin/bash\nvault kv read secret/data/prod/db\n")
+	// Files that should be excluded
+	writeFile(t, dir, "vendor/lib/setup.sh", "#!/bin/bash\nvault kv read secret/data/vendor/key\n")
+
+	s := NewWithExcludes(dir, []string{"vendor/**"})
+	refs, err := s.Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, ref := range refs {
+		if strings.Contains(ref.File, "vendor") {
+			t.Errorf("vendor file should be excluded: %s", ref.File)
+		}
+	}
+
+	// Should find the deploy.sh reference
+	found := false
+	for _, ref := range refs {
+		if strings.Contains(ref.Path, "prod/db") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected to find secret/data/prod/db from deploy.sh")
+	}
+}
+
+func TestNewWithExcludes_EmptyPatterns(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "run.sh", "#!/bin/bash\nvault kv read secret/data/app\n")
+
+	s := NewWithExcludes(dir, nil)
+	refs, err := s.Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) == 0 {
+		t.Error("expected refs with empty exclude patterns")
+	}
+}
+
+func TestIsExcluded(t *testing.T) {
+	s := &Scanner{
+		repoPath:        "/repo",
+		excludePatterns: []string{"vendor/**", "*.test.js", "testdata/**"},
+	}
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/repo/vendor/lib/x.go", true},
+		{"/repo/src/main.go", false},
+		{"/repo/app.test.js", true},
+		{"/repo/testdata/fixture.yml", true},
+		{"/repo/src/app.go", false},
+	}
+
+	for _, tt := range tests {
+		got := s.isExcluded(tt.path)
+		if got != tt.want {
+			t.Errorf("isExcluded(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}

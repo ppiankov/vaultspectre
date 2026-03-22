@@ -41,6 +41,7 @@ var (
 	timeoutSeconds  int      // --timeout flag (seconds)
 	baselinePath    string   // --baseline flag
 	updateBaseline  bool     // --update-baseline flag
+	excludeFlag     string   // --exclude flag (comma-separated globs)
 )
 
 var scanCmd = &cobra.Command{
@@ -93,6 +94,7 @@ func init() {
 	scanCmd.Flags().IntVar(&timeoutSeconds, "timeout", 30, "Timeout in seconds for Vault API calls (includes retry window)")
 	scanCmd.Flags().StringVar(&baselinePath, "baseline", "", "Path to baseline file for suppressing known findings")
 	scanCmd.Flags().BoolVar(&updateBaseline, "update-baseline", false, "Save current findings as new baseline")
+	scanCmd.Flags().StringVar(&excludeFlag, "exclude", "", "Comma-separated glob patterns to exclude from scanning")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -119,8 +121,24 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("vault token is required: set --token flag or VAULT_TOKEN environment variable")
 	}
 
+	// Build exclude patterns from config + CLI flag
+	var excludePatterns []string
+	excludePatterns = append(excludePatterns, cfg.ExcludePatterns...)
+	if excludeFlag != "" {
+		for _, p := range strings.Split(excludeFlag, ",") {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				excludePatterns = append(excludePatterns, trimmed)
+			}
+		}
+	}
+
 	// Initialize scanner
-	s := scanner.New(repoPath)
+	var s *scanner.Scanner
+	if len(excludePatterns) > 0 {
+		s = scanner.NewWithExcludes(repoPath, excludePatterns)
+	} else {
+		s = scanner.New(repoPath)
+	}
 
 	// Scan repository for secret references
 	slog.Info("scanning repository", "path", repoPath)

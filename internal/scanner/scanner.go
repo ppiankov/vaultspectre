@@ -9,8 +9,9 @@ import (
 
 // Scanner scans repositories for Vault secret references
 type Scanner struct {
-	repoPath string
-	patterns []*Pattern
+	repoPath        string
+	patterns        []*Pattern
+	excludePatterns []string
 }
 
 // Reference represents a discovered Vault secret reference
@@ -36,6 +37,39 @@ func New(repoPath string) *Scanner {
 	}
 }
 
+// NewWithExcludes creates a scanner with file exclusion patterns (glob syntax)
+func NewWithExcludes(repoPath string, excludePatterns []string) *Scanner {
+	return &Scanner{
+		repoPath:        repoPath,
+		patterns:        GetPatterns(),
+		excludePatterns: excludePatterns,
+	}
+}
+
+// isExcluded checks if a path matches any exclude pattern
+func (s *Scanner) isExcluded(path string) bool {
+	rel, err := filepath.Rel(s.repoPath, path)
+	if err != nil {
+		return false
+	}
+	for _, pattern := range s.excludePatterns {
+		if matched, _ := filepath.Match(pattern, rel); matched {
+			return true
+		}
+		if matched, _ := filepath.Match(pattern, filepath.Base(rel)); matched {
+			return true
+		}
+		// Support dir/** patterns by checking prefix
+		dirPattern := strings.TrimSuffix(pattern, "/**")
+		if dirPattern != pattern {
+			if strings.HasPrefix(rel, dirPattern+string(filepath.Separator)) || rel == dirPattern {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Scan performs the repository scan and returns all found references
 func (s *Scanner) Scan() ([]Reference, error) {
 	var references []Reference
@@ -52,10 +86,17 @@ func (s *Scanner) Scan() ([]Reference, error) {
 			if strings.HasPrefix(base, ".") && base != "." && base != ".." {
 				return filepath.SkipDir
 			}
+			if s.isExcluded(path) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
 		if strings.HasPrefix(base, ".") {
+			return nil
+		}
+
+		if s.isExcluded(path) {
 			return nil
 		}
 
