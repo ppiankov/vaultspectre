@@ -41,6 +41,9 @@ exclude_patterns:
   - "*_test.go"
   - "testdata/**"
   - "**/*.example"
+
+# Slack webhook URL for watch mode notifications (optional)
+# slack_webhook_url: "https://hooks.slack.com/services/T.../B.../..."
 `
 
 var initCmd = &cobra.Command{
