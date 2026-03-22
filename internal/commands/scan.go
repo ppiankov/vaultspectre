@@ -115,10 +115,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Validate required parameters
 	if vaultAddr == "" {
-		return fmt.Errorf("vault address is required: set --vault-addr flag or VAULT_ADDR environment variable")
+		return newExitError(ExitBadArgs, "vault address is required: set --vault-addr flag or VAULT_ADDR environment variable")
 	}
 	if vaultToken == "" {
-		return fmt.Errorf("vault token is required: set --token flag or VAULT_TOKEN environment variable")
+		return newExitError(ExitBadArgs, "vault token is required: set --token flag or VAULT_TOKEN environment variable")
 	}
 
 	// Build exclude patterns from config + CLI flag
@@ -223,7 +223,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Timeout:   time.Duration(timeoutSeconds) * time.Second,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create Vault client: %w", err)
+		return newExitError(ExitNetwork, "failed to create Vault client: %v", err)
 	}
 
 	// Parse audit log if provided
@@ -367,7 +367,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			issueCount += results.Summary.StatusDynamic
 		}
 		if issueCount > 0 {
-			return fmt.Errorf("found %d issue(s) in secret references", issueCount)
+			return newExitError(ExitFindings, "found %d issue(s) in secret references", issueCount)
 		}
 	}
 

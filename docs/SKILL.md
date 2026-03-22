@@ -53,8 +53,10 @@ Scans Vault secrets engine for security findings.
 
 **Exit codes:**
 - 0: scan complete, no findings
-- 1: scan complete, findings detected
-- 2: scan failed (connectivity, auth, config error)
+- 1: internal error
+- 2: invalid arguments or config error
+- 5: network/connectivity error (Vault unreachable)
+- 6: findings detected (missing/stale/invalid secrets)
 
 ### vaultspectre init
 
