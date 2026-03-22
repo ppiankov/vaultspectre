@@ -18,13 +18,50 @@ go install github.com/ppiankov/vaultspectre/cmd/vaultspectre@latest
 
 ### vaultspectre scan
 
-Scans Vault secrets engine for security findings.
+Scans code for Vault secret references and validates against live Vault.
 
 **Flags:**
 - `--format json` — output as JSON (spectre/v1 envelope)
 - `--format sarif` — SARIF format for CI integration
 - `--format spectrehub` — SpectreHub aggregator format
+- `--exclude pattern` — comma-separated glob patterns to skip (e.g. `vendor/**,testdata/**`)
 - `--baseline path` — suppress known findings
+- `--fail-on-missing` — exit 6 if missing secrets found
+- `--detect-vars` — auto-detect variables from Ansible inventory
+- `--var key=value` — set variable for path resolution
+- `--stale-days N` — stale secret threshold (default 90)
+- `--timeout N` — Vault API timeout in seconds (default 30)
+
+**Exit codes:**
+- 0: scan complete, no findings
+- 1: internal error
+- 2: invalid arguments or config error
+- 5: network/connectivity error (Vault unreachable)
+- 6: findings detected (missing/stale/invalid secrets)
+
+### vaultspectre watch
+
+Continuous drift detection with delta reporting.
+
+**Flags:**
+- `--interval duration` — scan interval (default 5m)
+- `--slack-webhook url` — Slack webhook URL for notifications
+- All `scan` flags also apply (--repo, --vault-addr, --token, --format, --exclude, etc.)
+
+**Exit codes:**
+- 0: clean shutdown, no findings ever detected
+- 6: findings were detected during at least one run
+
+### vaultspectre init
+
+Generate a starter `.vaultspectre.yaml` config file.
+
+**Flags:**
+- `--force` — overwrite existing config
+
+**Exit codes:**
+- 0: config created
+- 1: config already exists or error
 
 **JSON output:**
 ```json
@@ -51,25 +88,11 @@ Scans Vault secrets engine for security findings.
 }
 ```
 
-**Exit codes:**
-- 0: scan complete, no findings
-- 1: internal error
-- 2: invalid arguments or config error
-- 5: network/connectivity error (Vault unreachable)
-- 6: findings detected (missing/stale/invalid secrets)
-
-### vaultspectre init
-
-Initialize configuration with sensible defaults.
-
-**Exit codes:**
-- 0: config created
-- 1: config already exists or error
-
 ## Handoffs
 
 - Output: spectre/v1 JSON envelope. Next: spectrehub for aggregation across scanners.
 - Output: SARIF. Next: CI security gates.
+- Output: Slack webhook. Next: ops team triage.
 - Refused questions: how to fix findings, whether to remediate, risk acceptance decisions.
 
 ## What this does NOT do
@@ -81,7 +104,7 @@ Initialize configuration with sensible defaults.
 ## Failure Modes
 
 - Authentication failure: returns exit code 2. Distrust: all findings fields. Safe fallback: report scan failure, do not cache.
-- Network timeout: returns exit code 2. Distrust: completeness of findings. Safe fallback: partial results with warning.
+- Network timeout: returns exit code 5. Distrust: completeness of findings. Safe fallback: partial results with warning.
 - Rate limiting: returns partial findings with truncation warning. Distrust: summary counts.
 
 ## Parsing examples

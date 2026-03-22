@@ -18,13 +18,13 @@ VaultSpectre bridges that gap — correlating secret references in code with liv
 - Validates that referenced paths exist in Vault (KV v1/v2)
 - Detects unused and stale secrets via metadata and audit logs
 - Supports variable resolution from files, CLI flags, and Ansible auto-detection
+- Continuous drift monitoring with delta reporting via `watch` command
 - Outputs text, JSON, SARIF, and SpectreHub formats
 
 ## What it is NOT
 
 - Not a Vault management tool — never writes, rotates, or deletes secrets
 - Not a secret scanner — finds references, not leaked credentials
-- Not a monitoring tool — point-in-time scanner
 - Not a replacement for Vault audit logs — complements them
 
 ## Quick start
@@ -33,26 +33,45 @@ VaultSpectre bridges that gap — correlating secret references in code with liv
 # Install
 brew install ppiankov/tap/vaultspectre
 
+# Generate config
+vaultspectre init
+
 # Scan a repository
-vaultspectre scan \
-  --repo ./my-repo \
-  --vault-addr https://vault.example.com \
-  --token $VAULT_TOKEN
+vaultspectre scan --repo . --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
 
 # JSON output for CI/CD
-vaultspectre scan --repo . --vault-addr $VAULT_ADDR --token $VAULT_TOKEN --output json
+vaultspectre scan --repo . --format json --fail-on-missing
 
-# Fail on missing secrets
-vaultspectre scan --repo . --vault-addr $VAULT_ADDR --token $VAULT_TOKEN --fail-on-missing
+# Continuous monitoring
+vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 ```
+
+## CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `vaultspectre scan` | Scan code for Vault references, validate against live Vault |
+| `vaultspectre watch` | Continuous drift detection with delta reporting |
+| `vaultspectre init` | Generate starter `.vaultspectre.yaml` config |
+| `vaultspectre version` | Print version |
+
+Key flags: `--format json\|sarif\|spectrehub`, `--exclude vendor/**,testdata/**`, `--fail-on-missing`, `--detect-vars`, `--baseline`, `--slack-webhook`
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success, no findings |
+| 1 | Internal error |
+| 2 | Invalid arguments or config |
+| 5 | Network error (Vault unreachable) |
+| 6 | Findings detected |
 
 ## Agent integration
 
 Single binary, deterministic output, structured JSON, bounded scans.
 
-Agents: read [`SKILL.md`](SKILL.md) for commands, JSON parsing patterns, and workflow examples.
-
-Key pattern: `vaultspectre scan --output json` returns SpectreHub-compatible JSON with status classifications and health scores.
+Agents: read [`docs/SKILL.md`](docs/SKILL.md) for commands, JSON parsing patterns, and workflow examples.
 
 ## SpectreHub integration
 
@@ -63,12 +82,6 @@ spectrehub collect --tool vaultspectre
 ## Safety
 
 vaultspectre operates in **read-only mode** — never writes, rotates, or deletes your secrets.
-
-## Documentation
-
-| Document | Contents |
-|----------|----------|
-| [CLI Reference](docs/cli-reference.md) | All flags, config, scanner coverage, status classifications, installation |
 
 ## License
 
