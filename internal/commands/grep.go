@@ -71,6 +71,11 @@ func init() {
 	grepCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
 	grepCmd.Flags().IntVar(&timeoutSeconds, "timeout", 30, "Timeout in seconds for Vault API calls")
 	grepCmd.Flags().BoolVar(&verbose, "verbose", false, "Show detailed information")
+	grepCmd.Flags().StringVar(&authMethod, "auth-method", "token", "Auth method: token, approle, kubernetes")
+	grepCmd.Flags().StringVar(&roleID, "role-id", os.Getenv("VAULT_ROLE_ID"), "AppRole role ID")
+	grepCmd.Flags().StringVar(&secretID, "secret-id", os.Getenv("VAULT_SECRET_ID"), "AppRole secret ID")
+	grepCmd.Flags().StringVar(&k8sRole, "k8s-role", "", "Kubernetes auth role name")
+	grepCmd.Flags().StringVar(&k8sJWTPath, "k8s-jwt-path", "", "Path to Kubernetes JWT file")
 }
 
 func runGrep(cmd *cobra.Command, _ []string) error {
@@ -91,7 +96,7 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 	if vaultAddr == "" {
 		return newExitError(ExitBadArgs, "vault address is required: set --vault-addr or VAULT_ADDR")
 	}
-	if vaultToken == "" {
+	if vault.AuthMethod(authMethod) == vault.AuthToken && vaultToken == "" {
 		return newExitError(ExitBadArgs, "vault token is required: set --token or VAULT_TOKEN")
 	}
 	if grepKeyPattern == "" && grepValuePattern == "" && !grepDryRun {
@@ -106,6 +111,17 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		return newExitError(ExitNetwork, "failed to create Vault client: %v", err)
+	}
+
+	if err := vault.Authenticate(client.GetClient(), vault.AuthConfig{
+		Method:     vault.AuthMethod(authMethod),
+		Token:      vaultToken,
+		RoleID:     roleID,
+		SecretID:   secretID,
+		K8sRole:    k8sRole,
+		K8sJWTPath: k8sJWTPath,
+	}); err != nil {
+		return newExitError(ExitBadArgs, "authentication failed: %v", err)
 	}
 
 	matcher := grep.NewMatcher(grepKeyPattern, grepValuePattern, grepCaseSensitive)

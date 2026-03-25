@@ -55,6 +55,11 @@ func init() {
 	watchCmd.Flags().IntVar(&timeoutSeconds, "timeout", 30, "Vault API timeout in seconds")
 	watchCmd.Flags().BoolVar(&verbose, "verbose", false, "Verbose output")
 	watchCmd.Flags().StringVar(&slackWebhookURL, "slack-webhook", "", "Slack webhook URL for notifications")
+	watchCmd.Flags().StringVar(&authMethod, "auth-method", "token", "Auth method: token, approle, kubernetes")
+	watchCmd.Flags().StringVar(&roleID, "role-id", os.Getenv("VAULT_ROLE_ID"), "AppRole role ID")
+	watchCmd.Flags().StringVar(&secretID, "secret-id", os.Getenv("VAULT_SECRET_ID"), "AppRole secret ID")
+	watchCmd.Flags().StringVar(&k8sRole, "k8s-role", "", "Kubernetes auth role name")
+	watchCmd.Flags().StringVar(&k8sJWTPath, "k8s-jwt-path", "", "Path to Kubernetes JWT file")
 }
 
 // watchFinding is a simplified representation for delta comparison
@@ -222,6 +227,19 @@ func collectFindings(cfg config.Config) map[string]watchFinding {
 	})
 	if err != nil {
 		slog.Error("vault client creation failed", "error", err)
+		return findings
+	}
+
+	// Authenticate using configured method
+	if err := vault.Authenticate(vaultClient.GetClient(), vault.AuthConfig{
+		Method:     vault.AuthMethod(authMethod),
+		Token:      vaultToken,
+		RoleID:     roleID,
+		SecretID:   secretID,
+		K8sRole:    k8sRole,
+		K8sJWTPath: k8sJWTPath,
+	}); err != nil {
+		slog.Error("authentication failed", "error", err)
 		return findings
 	}
 
