@@ -24,4 +24,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(watchCmd)
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(grepCmd)
 }

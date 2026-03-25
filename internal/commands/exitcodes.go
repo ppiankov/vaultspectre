@@ -7,6 +7,7 @@ const (
 	ExitSuccess  = 0 // No issues found
 	ExitError    = 1 // Internal/unexpected error
 	ExitBadArgs  = 2 // Invalid arguments or config
+	ExitNotFound = 3 // Grep: no matches found
 	ExitNetwork  = 5 // Network/connectivity error (Vault unreachable)
 	ExitFindings = 6 // Findings detected (missing/stale/invalid secrets)
 )

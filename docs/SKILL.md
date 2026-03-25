@@ -63,6 +63,46 @@ Generate a starter `.vaultspectre.yaml` config file.
 - 0: config created
 - 1: config already exists or error
 
+### vaultspectre grep
+
+Search Vault secrets by key or value pattern. Recursively walks a KV tree.
+
+**Flags:**
+- `--path kv/projects/` — Vault path to search (default: `kv`)
+- `--key-pattern "CLICKHOUSE_*"` — comma-separated glob patterns for key names
+- `--value-pattern "10.200.4.206"` — comma-separated patterns for value content
+- `--show-values` — show secret values in plaintext (with warning)
+- `--depth N` — max recursion depth (0 = unlimited)
+- `--workers N` — concurrent Vault readers (default 10)
+- `--dry-run` — list paths without reading secrets
+- `--format json` — structured JSON output
+- `--case-sensitive` — case-sensitive matching
+
+**Exit codes:**
+- 0: matches found
+- 3: no matches found
+- 5: Vault unreachable
+- 1: internal error
+- 2: invalid arguments
+
+**JSON output:**
+```json
+{
+  "matches": [
+    {
+      "path": "kv/projects/ads/int/ads-stat",
+      "keys": [
+        {"name": "CLICKHOUSE_HOST", "type": "string"},
+        {"name": "CLICKHOUSE_PASSWORD", "type": "string"}
+      ]
+    }
+  ],
+  "total_scanned": 847,
+  "total_skipped": 11,
+  "match_count": 3
+}
+```
+
 ### vaultspectre doctor
 
 Check configuration, connectivity, and readiness.
@@ -163,6 +203,8 @@ Print version, commit, Go version, and platform.
 ```bash
 vaultspectre scan --format json | jq '.summary'
 vaultspectre scan --format json | jq '.findings[] | select(.severity == "critical")'
+vaultspectre grep --path kv/ --key-pattern "CLICKHOUSE_*" --format json | jq '.matches[].path'
+vaultspectre grep --path kv/ --key-pattern "*" --value-pattern "10.200.4.206" --format json | jq '.match_count'
 ```
 
 ## Deprecated

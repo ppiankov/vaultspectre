@@ -72,6 +72,43 @@ func (c *Client) GetMetadata(mount, path string) (*vault.Secret, error) {
 	return c.Read(metadataPath)
 }
 
+// List lists secrets at a given path. Keys ending in "/" are directories.
+func (c *Client) List(path string) ([]string, error) {
+	var result *vault.Secret
+	err := withRetry(c.timeout, func() error {
+		secret, listErr := c.client.Logical().List(path)
+		if listErr != nil {
+			return listErr
+		}
+		result = secret
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || result.Data == nil {
+		return nil, nil
+	}
+
+	keysRaw, ok := result.Data["keys"]
+	if !ok {
+		return nil, nil
+	}
+
+	keysList, ok := keysRaw.([]interface{})
+	if !ok {
+		return nil, nil
+	}
+
+	keys := make([]string, 0, len(keysList))
+	for _, k := range keysList {
+		if s, ok := k.(string); ok {
+			keys = append(keys, s)
+		}
+	}
+	return keys, nil
+}
+
 // GetClient returns the underlying Vault API client
 func (c *Client) GetClient() *vault.Client {
 	return c.client
