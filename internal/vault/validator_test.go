@@ -68,6 +68,16 @@ func TestConvertToKVv2Path(t *testing.T) {
 			path: "secret/mykey",
 			want: "secret/data/mykey",
 		},
+		{
+			name: "path segment named data not treated as KV v2 marker",
+			path: "kv/projects/data/int/myservice",
+			want: "kv/data/projects/data/int/myservice",
+		},
+		{
+			name: "deeper data segment not confused with KV v2",
+			path: "secret/apps/data/config",
+			want: "secret/data/apps/data/config",
+		},
 	}
 
 	for _, tt := range tests {
@@ -128,6 +138,18 @@ func TestParseKVv2Path(t *testing.T) {
 			fullPath:   "secret/data/a/b/c/d",
 			wantMount:  "secret",
 			wantSecret: "a/b/c/d",
+		},
+		{
+			name:       "data as deeper segment not treated as KV v2 marker",
+			fullPath:   "kv/projects/data/int/myservice",
+			wantMount:  "",
+			wantSecret: "",
+		},
+		{
+			name:       "data in third position not matched",
+			fullPath:   "secret/apps/data/config",
+			wantMount:  "",
+			wantSecret: "",
 		},
 	}
 

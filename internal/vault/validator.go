@@ -73,27 +73,30 @@ func (v *Validator) ValidatePath(path string) (string, error) {
 
 // convertToKVv2Path converts a KV v1 style path to KV v2 by inserting /data/
 // e.g., "secret/production/app" -> "secret/data/production/app"
-// If path already contains /data/, returns unchanged
+// Only checks the second segment for the KV v2 marker to avoid false positives
+// when a path segment deeper in the tree happens to be named "data"
 func convertToKVv2Path(path string) string {
-	// Already has /data/ or /metadata/ - don't modify
-	if strings.Contains(path, "/data/") || strings.Contains(path, "/metadata/") {
-		return path
-	}
-
 	// System paths (sys/, auth/, etc.) shouldn't be modified
 	if strings.HasPrefix(path, "sys/") || strings.HasPrefix(path, "auth/") ||
 		strings.HasPrefix(path, "cubbyhole/") || strings.HasPrefix(path, "identity/") {
 		return path
 	}
 
-	// Insert /data/ after the mount point (first segment)
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) == 2 {
-		return parts[0] + "/data/" + parts[1]
+	// Split into mount / remainder
+	parts := strings.SplitN(path, "/", 3)
+
+	// Single segment or mount-only — nothing to convert
+	if len(parts) < 2 || parts[1] == "" {
+		return path
 	}
 
-	// Path has no slashes or only one segment - return as-is
-	return path
+	// If the second segment is already "data" or "metadata", this is already a KV v2 path
+	if parts[1] == "data" || parts[1] == "metadata" {
+		return path
+	}
+
+	// Insert /data/ after the mount point (first segment)
+	return parts[0] + "/data/" + strings.Join(parts[1:], "/")
 }
 
 // CheckStaleness checks if a secret is stale using BOTH metadata and audit logs
@@ -163,21 +166,21 @@ func (v *Validator) CheckStaleness(path string, thresholdDays int) (bool, string
 
 // parseKVv2Path attempts to parse a KV v2 path into mount and secret path
 // e.g., "secret/data/prod/api/key" -> ("secret", "prod/api/key")
+// Only the second segment is treated as the KV v2 marker to avoid false
+// positives when deeper path segments happen to be named "data"
 func parseKVv2Path(fullPath string) (string, string) {
 	parts := strings.Split(fullPath, "/")
 
-	// KV v2 paths typically have format: mount/data/path/to/secret
+	// KV v2 paths have format: mount/data/path/to/secret (minimum 3 segments)
 	if len(parts) < 3 {
 		return "", ""
 	}
 
-	// Look for "/data/" segment which indicates KV v2
-	for i, part := range parts {
-		if part == "data" && i > 0 && i < len(parts)-1 {
-			mount := strings.Join(parts[:i], "/")
-			secretPath := strings.Join(parts[i+1:], "/")
-			return mount, secretPath
-		}
+	// Only the second segment (index 1) is the KV v2 data marker
+	if parts[1] == "data" {
+		mount := parts[0]
+		secretPath := strings.Join(parts[2:], "/")
+		return mount, secretPath
 	}
 
 	return "", ""
