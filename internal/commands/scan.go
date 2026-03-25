@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -42,6 +43,7 @@ var (
 	baselinePath    string   // --baseline flag
 	updateBaseline  bool     // --update-baseline flag
 	excludeFlag     string   // --exclude flag (comma-separated globs)
+	scanTimeoutMins int      // --scan-timeout flag (minutes, 0 to disable)
 )
 
 var scanCmd = &cobra.Command{
@@ -95,6 +97,7 @@ func init() {
 	scanCmd.Flags().StringVar(&baselinePath, "baseline", "", "Path to baseline file for suppressing known findings")
 	scanCmd.Flags().BoolVar(&updateBaseline, "update-baseline", false, "Save current findings as new baseline")
 	scanCmd.Flags().StringVar(&excludeFlag, "exclude", "", "Comma-separated glob patterns to exclude from scanning")
+	scanCmd.Flags().IntVar(&scanTimeoutMins, "scan-timeout", 10, "Global scan timeout in minutes (0 to disable)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -252,11 +255,41 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Validate each secret reference
 	slog.Info("validating secret paths")
 
+	// Set up global scan timeout
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if scanTimeoutMins > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(scanTimeoutMins)*time.Minute)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+	defer cancel()
+
+	totalPaths := 0
+	validatedPaths := 0
+	for i := range references {
+		if references[i].Status == "pending_validation" {
+			totalPaths++
+		}
+	}
+
 	for i := range references {
 		// ROOTOPS: Only validate paths that are ready (resolved or static)
 		if references[i].Status != "pending_validation" {
 			// Skip: needs_resolution, skipped_policy, etc.
 			continue
+		}
+
+		// Check scan timeout
+		if ctx.Err() != nil {
+			slog.Warn("scan timed out, flushing partial results",
+				"validated", validatedPaths,
+				"total", totalPaths,
+				"timeout_minutes", scanTimeoutMins,
+			)
+			fmt.Fprintf(os.Stderr, "scan timed out after %dm: %d/%d paths validated\n",
+				scanTimeoutMins, validatedPaths, totalPaths)
+			break
 		}
 
 		// Use ResolvedPath for validation (will be same as Path for static paths)
@@ -273,6 +306,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		} else {
 			references[i].Status = status
 		}
+		validatedPaths++
 
 		// Check for staleness if enabled
 		if staleDays > 0 && status == "ok" {
@@ -283,6 +317,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+
+	scanTimedOut := ctx.Err() != nil
 
 	// Update baseline if requested (before filtering)
 	if updateBaseline && baselinePath != "" {
@@ -358,6 +394,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if err := reporter.Generate(reportData); err != nil {
 		return fmt.Errorf("failed to generate report: %w", err)
+	}
+
+	// Exit with timeout code if scan was interrupted
+	if scanTimedOut {
+		return newExitError(ExitNetwork, "scan timed out after %dm: %d/%d paths validated", scanTimeoutMins, validatedPaths, totalPaths)
 	}
 
 	// Exit with error if requested and issues found
