@@ -63,7 +63,25 @@ Generate a starter `.vaultspectre.yaml` config file.
 - 0: config created
 - 1: config already exists or error
 
-**JSON output:**
+### vaultspectre version
+
+Print version, commit, Go version, and platform.
+
+**Flags:**
+- `--format json` — structured JSON output
+
+**JSON output (version):**
+```json
+{
+  "tool": "vaultspectre",
+  "version": "0.4.0",
+  "commit": "abc1234",
+  "go_version": "go1.25.0",
+  "platform": "darwin/arm64"
+}
+```
+
+**JSON output (scan):**
 ```json
 {
   "version": "spectre/v1",
