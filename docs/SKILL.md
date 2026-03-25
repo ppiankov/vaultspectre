@@ -114,6 +114,12 @@ vaultspectre scan --format json | jq '.summary'
 vaultspectre scan --format json | jq '.findings[] | select(.severity == "critical")'
 ```
 
+## Deprecated
+
+| Command | Flag | Replacement | Removal |
+|---------|------|-------------|---------|
+| `scan`, `watch` | `--output` | `--format` | v1.0.0 |
+
 ---
 
 This tool follows the [Agent-Native CLI Convention](https://ancc.dev). Validate with: `ancc validate .`
