@@ -25,6 +25,7 @@ var (
 	grepDryRun        bool
 	grepFormat        string
 	grepCaseSensitive bool
+	grepVerifyFormat  bool
 )
 
 var grepCmd = &cobra.Command{
@@ -66,6 +67,7 @@ func init() {
 	grepCmd.Flags().BoolVar(&grepDryRun, "dry-run", false, "List paths that would be read without reading them")
 	grepCmd.Flags().StringVar(&grepFormat, "format", "text", "Output format: text, json")
 	grepCmd.Flags().BoolVar(&grepCaseSensitive, "case-sensitive", false, "Case-sensitive pattern matching")
+	grepCmd.Flags().BoolVar(&grepVerifyFormat, "verify-format", true, "Verify credential value formats (default on)")
 	grepCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	grepCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	grepCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
@@ -126,10 +128,11 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 
 	matcher := grep.NewMatcher(grepKeyPattern, grepValuePattern, grepCaseSensitive)
 	walker := grep.NewWalker(client, matcher, grep.WalkerConfig{
-		ShowValues: grepShowValues,
-		MaxDepth:   grepDepth,
-		Workers:    grepWorkers,
-		DryRun:     grepDryRun,
+		ShowValues:   grepShowValues,
+		MaxDepth:     grepDepth,
+		Workers:      grepWorkers,
+		DryRun:       grepDryRun,
+		VerifyFormat: grepVerifyFormat,
 	})
 
 	if grepShowValues {
@@ -192,6 +195,9 @@ func printGrepText(result *grep.GrepResult, dryRun bool) {
 				}
 				fmt.Printf("  %-30s = ***%s\n", k.Name, typeHint)
 			}
+		}
+		if m.FormatIssues != "" {
+			fmt.Printf("  FORMAT ERROR: %s\n", m.FormatIssues)
 		}
 		fmt.Println()
 	}

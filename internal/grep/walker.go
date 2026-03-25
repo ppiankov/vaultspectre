@@ -6,8 +6,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ppiankov/vaultspectre/internal/vault"
+	"github.com/ppiankov/vaultspectre/internal/verify"
 )
 
 // readJob is a path to be read by a worker goroutine.
@@ -17,22 +19,24 @@ type readJob struct {
 
 // Walker recursively walks a Vault KV tree and applies a matcher to each secret.
 type Walker struct {
-	client     *vault.Client
-	matcher    *Matcher
-	showValues bool
-	maxDepth   int // 0 = unlimited
-	workers    int
-	dryRun     bool
-	kvVersion  int // 1 or 2, 0 = auto-detect
+	client       *vault.Client
+	matcher      *Matcher
+	showValues   bool
+	maxDepth     int // 0 = unlimited
+	workers      int
+	dryRun       bool
+	kvVersion    int // 1 or 2, 0 = auto-detect
+	verifyFormat bool
 }
 
 // WalkerConfig configures the walker.
 type WalkerConfig struct {
-	ShowValues bool
-	MaxDepth   int
-	Workers    int
-	DryRun     bool
-	KVVersion  int
+	ShowValues   bool
+	MaxDepth     int
+	Workers      int
+	DryRun       bool
+	KVVersion    int
+	VerifyFormat bool
 }
 
 // NewWalker creates a new recursive Vault walker.
@@ -42,13 +46,14 @@ func NewWalker(client *vault.Client, matcher *Matcher, cfg WalkerConfig) *Walker
 		workers = 10
 	}
 	return &Walker{
-		client:     client,
-		matcher:    matcher,
-		showValues: cfg.ShowValues,
-		maxDepth:   cfg.MaxDepth,
-		workers:    workers,
-		dryRun:     cfg.DryRun,
-		kvVersion:  cfg.KVVersion,
+		client:       client,
+		matcher:      matcher,
+		showValues:   cfg.ShowValues,
+		maxDepth:     cfg.MaxDepth,
+		workers:      workers,
+		dryRun:       cfg.DryRun,
+		kvVersion:    cfg.KVVersion,
+		verifyFormat: cfg.VerifyFormat,
 	}
 }
 
@@ -116,11 +121,22 @@ func (w *Walker) Walk(basePath string) (*GrepResult, error) {
 
 				matches := w.matcher.Match(data, w.showValues)
 				if len(matches) > 0 {
-					mu.Lock()
-					result.Matches = append(result.Matches, PathMatch{
+					pm := PathMatch{
 						Path: job.path,
 						Keys: matches,
-					})
+					}
+
+					// Run format verification if enabled
+					if w.verifyFormat {
+						fv := verify.NewFormatVerifier()
+						vr := fv.Verify(job.path, data, 5*time.Second)
+						if vr.Status == verify.StatusFormatError {
+							pm.FormatIssues = vr.Details
+						}
+					}
+
+					mu.Lock()
+					result.Matches = append(result.Matches, pm)
 					mu.Unlock()
 				}
 			}

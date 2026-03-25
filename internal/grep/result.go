@@ -9,8 +9,9 @@ type MatchedKey struct {
 
 // PathMatch represents a Vault path that matched the grep criteria.
 type PathMatch struct {
-	Path string       `json:"path"`
-	Keys []MatchedKey `json:"keys"`
+	Path         string       `json:"path"`
+	Keys         []MatchedKey `json:"keys"`
+	FormatIssues string       `json:"format_issues,omitempty"` // From verify-format
 }
 
 // GrepResult holds the full grep output.
