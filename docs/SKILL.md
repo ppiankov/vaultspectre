@@ -63,6 +63,39 @@ Generate a starter `.vaultspectre.yaml` config file.
 - 0: config created
 - 1: config already exists or error
 
+### vaultspectre doctor
+
+Check configuration, connectivity, and readiness.
+
+**Flags:**
+- `--format json` — structured JSON output
+- `--vault-addr` — Vault server address
+- `--token` — Vault authentication token
+- `--timeout N` — timeout in seconds (default 30)
+
+**Checks:**
+- `config_file` — validates `.vaultspectre.yaml` if present
+- `vault_address` — ensures VAULT_ADDR is set
+- `vault_token` — ensures VAULT_TOKEN is set
+- `vault_connectivity` — attempts token lookup to verify connection
+- `token_permissions` — verifies token policies
+
+**Exit codes:**
+- 0: all checks pass
+- 1: one or more checks failed
+
+**JSON output:**
+```json
+{
+  "checks": [
+    {"name": "config_file", "status": "pass", "message": "loaded .vaultspectre.yaml"},
+    {"name": "vault_address", "status": "pass", "message": "https://vault.example.com"},
+    {"name": "vault_connectivity", "status": "pass", "message": "connected (42ms)"}
+  ],
+  "ready": true
+}
+```
+
 ### vaultspectre version
 
 Print version, commit, Go version, and platform.

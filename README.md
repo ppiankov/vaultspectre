@@ -53,6 +53,7 @@ vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 | `vaultspectre scan` | Scan code for Vault references, validate against live Vault |
 | `vaultspectre watch` | Continuous drift detection with delta reporting |
 | `vaultspectre init` | Generate starter `.vaultspectre.yaml` config |
+| `vaultspectre doctor` | Check config, connectivity, and readiness |
 | `vaultspectre version` | Print version |
 
 Key flags: `--format json\|sarif\|spectrehub`, `--exclude vendor/**,testdata/**`, `--fail-on-missing`, `--detect-vars`, `--baseline`, `--slack-webhook`
