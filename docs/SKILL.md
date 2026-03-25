@@ -165,6 +165,20 @@ Check configuration, connectivity, and readiness.
 }
 ```
 
+### vaultspectre ci-init
+
+Generate a ready-to-paste CI pipeline snippet.
+
+**Flags:**
+- `--format gitlab` — GitLab CI YAML (default)
+- `--format github` — GitHub Actions YAML
+- `--auth-method token|approle|kubernetes` — auth method for generated config
+- `--stage validate` — CI stage name
+
+**Exit codes:**
+- 0: snippet printed
+- 2: invalid format
+
 ### vaultspectre version
 
 Print version, commit, Go version, and platform.
