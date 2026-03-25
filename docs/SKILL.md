@@ -63,6 +63,30 @@ Generate a starter `.vaultspectre.yaml` config file.
 - 0: config created
 - 1: config already exists or error
 
+### vaultspectre diff
+
+Compare two scan reports and show changes (added, removed, status changes).
+
+**Flags:**
+- `--old path` — path to old/baseline scan report (JSON, required)
+- `--new path` — path to new/current scan report (JSON, required)
+- `--format json` — structured JSON output
+
+**Exit codes:**
+- 0: no new findings
+- 6: new findings detected (added or worsened)
+- 2: invalid arguments or malformed input
+
+**JSON output:**
+```json
+{
+  "added": [{"path": "kv/app/new", "change": "added", "new_status": "missing"}],
+  "removed": [{"path": "kv/app/old", "change": "removed", "old_status": "ok"}],
+  "changed": [{"path": "kv/app/db", "change": "changed", "old_status": "ok", "new_status": "missing"}],
+  "summary": {"total_added": 1, "total_removed": 1, "total_changed": 1}
+}
+```
+
 ### vaultspectre grep
 
 Search Vault secrets by key or value pattern. Recursively walks a KV tree.
@@ -205,6 +229,7 @@ vaultspectre scan --format json | jq '.summary'
 vaultspectre scan --format json | jq '.findings[] | select(.severity == "critical")'
 vaultspectre grep --path kv/ --key-pattern "CLICKHOUSE_*" --format json | jq '.matches[].path'
 vaultspectre grep --path kv/ --key-pattern "*" --value-pattern "10.200.4.206" --format json | jq '.match_count'
+vaultspectre diff --old baseline.json --new current.json --format json | jq '.added[].path'
 ```
 
 ## Deprecated

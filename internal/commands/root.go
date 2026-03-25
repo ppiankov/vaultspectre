@@ -25,4 +25,5 @@ func init() {
 	rootCmd.AddCommand(watchCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(grepCmd)
+	rootCmd.AddCommand(diffCmd)
 }
