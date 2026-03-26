@@ -31,4 +31,5 @@ func init() {
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(whoCmd)
 	rootCmd.AddCommand(countCmd)
+	rootCmd.AddCommand(serveCmd)
 }
