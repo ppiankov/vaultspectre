@@ -180,12 +180,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Show loaded variables and their sources
 	if len(variables) > 0 {
 		slog.Debug("loaded variables", "count", len(variables))
-		for key, value := range variables {
+		for key := range variables {
 			source := variableSources[key]
 			if source == "" {
 				source = "unknown"
 			}
-			slog.Debug("variable", "key", key, "value", value, "source", source)
+			slog.Debug("variable", "key", key, "value", "[set]", "source", source)
 		}
 	}
 

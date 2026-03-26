@@ -105,7 +105,7 @@ func (w *Walker) Walk(basePath string) (*GrepResult, error) {
 						slog.Warn("permission denied, skipping", "path", job.path)
 						continue
 					}
-					slog.Debug("failed to read secret", "path", job.path, "error", err)
+					slog.Debug("failed to read secret", "path", job.path, "error", sanitizeError(err))
 					continue
 				}
 
@@ -233,4 +233,14 @@ func splitMountPath(path string) (string, string) {
 func isPermissionError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "permission denied") || strings.Contains(msg, "403")
+}
+
+// sanitizeError strips potentially sensitive data from Vault API error messages.
+func sanitizeError(err error) string {
+	msg := err.Error()
+	// Truncate overly long error messages that may contain response bodies
+	if len(msg) > 200 {
+		msg = msg[:200] + "...[truncated]"
+	}
+	return msg
 }

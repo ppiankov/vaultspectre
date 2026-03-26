@@ -11,6 +11,7 @@ import (
 	"github.com/ppiankov/vaultspectre/internal/config"
 	"github.com/ppiankov/vaultspectre/internal/grep"
 	"github.com/ppiankov/vaultspectre/internal/logging"
+	"github.com/ppiankov/vaultspectre/internal/redact"
 	"github.com/ppiankov/vaultspectre/internal/vault"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +27,7 @@ var (
 	grepFormat        string
 	grepCaseSensitive bool
 	grepVerifyFormat  bool
+	grepNoRedact      bool
 )
 
 var grepCmd = &cobra.Command{
@@ -68,6 +70,7 @@ func init() {
 	grepCmd.Flags().StringVar(&grepFormat, "format", "text", "Output format: text, json")
 	grepCmd.Flags().BoolVar(&grepCaseSensitive, "case-sensitive", false, "Case-sensitive pattern matching")
 	grepCmd.Flags().BoolVar(&grepVerifyFormat, "verify-format", true, "Verify credential value formats (default on)")
+	grepCmd.Flags().BoolVar(&grepNoRedact, "no-redact", false, "Show raw values without redaction (TTY only, never with --format json)")
 	grepCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	grepCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	grepCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
@@ -135,8 +138,21 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 		VerifyFormat: grepVerifyFormat,
 	})
 
-	if grepShowValues {
-		fmt.Fprintln(os.Stderr, "WARNING: secret values shown in plaintext")
+	// Enforce redaction rules
+	if grepNoRedact {
+		if grepFormat == "json" {
+			return newExitError(ExitBadArgs, "cannot disable redaction for structured output (--no-redact incompatible with --format json)")
+		}
+		if !redact.IsTTY() {
+			fmt.Fprintln(os.Stderr, "WARNING: --no-redact ignored (stdout is not a terminal, redaction forced)")
+			grepNoRedact = false
+		}
+	}
+
+	if grepShowValues && grepNoRedact {
+		fmt.Fprintln(os.Stderr, "WARNING: raw secret values will be displayed")
+	} else if grepShowValues {
+		fmt.Fprintln(os.Stderr, "NOTE: secret values are redacted (use --no-redact on a terminal for raw values)")
 	}
 
 	slog.Info("searching vault", "path", grepPath, "key_pattern", grepKeyPattern)
@@ -144,6 +160,10 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return newExitError(ExitNetwork, "vault search failed: %v", err)
 	}
+
+	// Redact values in results
+	rd := redact.New()
+	redactValues(result, rd, grepFormat == "json" || !grepNoRedact)
 
 	// Output
 	if grepFormat == "json" {
@@ -211,4 +231,28 @@ func printGrepText(result *grep.GrepResult, dryRun bool) {
 		parts = append(parts, fmt.Sprintf("%d skipped (permission denied)", result.TotalSkipped))
 	}
 	fmt.Fprintln(os.Stderr, strings.Join(parts, ", "))
+}
+
+// redactValues redacts secret values in grep results in-place.
+// When shouldRedact is true, sensitive values are masked.
+// JSON output always redacts; text output redacts unless --no-redact on TTY.
+func redactValues(result *grep.GrepResult, rd redact.Redactor, shouldRedact bool) {
+	if !shouldRedact {
+		return
+	}
+	for i := range result.Matches {
+		for j := range result.Matches[i].Keys {
+			k := &result.Matches[i].Keys[j]
+			if k.Value == "" {
+				continue
+			}
+			// Always redact by key name (PASSWORD, TOKEN, etc.)
+			if redact.IsSensitiveKey(k.Name) {
+				k.Value = redact.RedactByKeyName(k.Name, k.Value)
+				continue
+			}
+			// Redact by value pattern (vault tokens, JWTs, DSNs, etc.)
+			k.Value = rd.Redact(k.Value)
+		}
+	}
 }

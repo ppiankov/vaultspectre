@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ppiankov/vaultspectre/internal/config"
+	"github.com/ppiankov/vaultspectre/internal/redact"
 	"github.com/ppiankov/vaultspectre/internal/vault"
 	"github.com/spf13/cobra"
 )
@@ -165,11 +166,8 @@ func checkVaultToken() CheckResult {
 	if vaultToken == "" {
 		return CheckResult{Name: "vault_token", Status: CheckFail, Message: "not set (use --token or VAULT_TOKEN)"}
 	}
-	// Mask token for display
-	masked := vaultToken[:4] + "..." + vaultToken[len(vaultToken)-4:]
-	if len(vaultToken) < 10 {
-		masked = "****"
-	}
+	// Mask token for display using safe masking
+	masked := redact.MaskToken(vaultToken)
 	return CheckResult{Name: "vault_token", Status: CheckPass, Message: fmt.Sprintf("present (%s)", masked)}
 }
 
