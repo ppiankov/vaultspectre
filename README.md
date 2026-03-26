@@ -53,6 +53,7 @@ vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 | `vaultspectre ls` | List Vault secret paths recursively (tree, count) |
 | `vaultspectre scan` | Scan code for Vault references, validate against live Vault |
 | `vaultspectre diff` | Compare two scan reports and show changes |
+| `vaultspectre who` | Find which codebases reference a Vault path |
 | `vaultspectre grep` | Search Vault secrets by key or value pattern |
 | `vaultspectre watch` | Continuous drift detection with delta reporting |
 | `vaultspectre init` | Generate starter `.vaultspectre.yaml` config |

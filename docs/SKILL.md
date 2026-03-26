@@ -200,6 +200,22 @@ Check configuration, connectivity, and readiness.
 }
 ```
 
+### vaultspectre who
+
+Find which codebases reference a Vault secret path (inverse of scan).
+
+**Flags:**
+- `--repos path1,path2` — comma-separated repo paths, or `@repos.txt` for file
+- `--stdin` — read target Vault paths from stdin
+- `--format json` — structured JSON output
+
+**Exit codes:**
+- 0: consumers found
+- 3: no references found
+- 2: invalid arguments
+
+Answers the rotation-readiness question: "who will break if I rotate this secret?"
+
 ### vaultspectre correlate
 
 Correlate Vault secrets with ClickHouse user activity. Uses `--from-file` mode (no live connections).
