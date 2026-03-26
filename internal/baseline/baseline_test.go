@@ -1,9 +1,11 @@
 package baseline
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ppiankov/vaultspectre/internal/scanner"
 )
@@ -29,9 +31,11 @@ func TestFingerprint(t *testing.T) {
 }
 
 func TestIsKnown(t *testing.T) {
+	fp := Fingerprint("missing", "secret/data/a")
 	b := &Baseline{
-		Fingerprints: []string{Fingerprint("missing", "secret/data/a")},
-		lookup:       map[string]bool{Fingerprint("missing", "secret/data/a"): true},
+		Entries:      []Entry{{ID: fp, Tool: "vaultspectre"}},
+		Fingerprints: []string{fp},
+		lookup:       map[string]bool{fp: true},
 	}
 
 	if !b.IsKnown("missing", "secret/data/a") {
@@ -45,11 +49,45 @@ func TestIsKnown(t *testing.T) {
 	}
 }
 
-func TestFilter(t *testing.T) {
+func TestIsKnownExpired(t *testing.T) {
+	fp := Fingerprint("missing", "secret/data/a")
+	past := time.Now().Add(-24 * time.Hour)
 	b := &Baseline{
-		lookup: map[string]bool{
-			Fingerprint("missing", "secret/data/known"): true,
-		},
+		Entries: []Entry{{
+			ID:        fp,
+			Tool:      "vaultspectre",
+			ExpiresAt: &past,
+		}},
+		lookup: map[string]bool{fp: true},
+	}
+
+	if b.IsKnown("missing", "secret/data/a") {
+		t.Error("expired entry should not be known")
+	}
+}
+
+func TestIsKnownNotExpired(t *testing.T) {
+	fp := Fingerprint("missing", "secret/data/a")
+	future := time.Now().Add(24 * time.Hour)
+	b := &Baseline{
+		Entries: []Entry{{
+			ID:        fp,
+			Tool:      "vaultspectre",
+			ExpiresAt: &future,
+		}},
+		lookup: map[string]bool{fp: true},
+	}
+
+	if !b.IsKnown("missing", "secret/data/a") {
+		t.Error("non-expired entry should be known")
+	}
+}
+
+func TestFilter(t *testing.T) {
+	fp := Fingerprint("missing", "secret/data/known")
+	b := &Baseline{
+		Entries: []Entry{{ID: fp, Tool: "vaultspectre"}},
+		lookup:  map[string]bool{fp: true},
 	}
 
 	refs := []scanner.Reference{
@@ -67,7 +105,6 @@ func TestFilter(t *testing.T) {
 		t.Errorf("filtered len = %d, want 3", len(filtered))
 	}
 
-	// Verify the known missing path was removed
 	for _, ref := range filtered {
 		if ref.Path == "secret/data/known" && ref.Status == "missing" {
 			t.Error("known finding should have been filtered out")
@@ -102,12 +139,17 @@ func TestFromRefs(t *testing.T) {
 		{Path: "secret/data/e", Status: "pending_validation"},
 	}
 
-	b := FromRefs(refs, "0.3.0")
+	b := FromRefs(refs, "0.5.0")
 
-	if b.Version != "0.3.0" {
+	if b.Version != "0.5.0" {
 		t.Errorf("version = %q", b.Version)
 	}
-	// Should have 3 unique actionable fingerprints (missing a, access_denied b, invalid d)
+	if b.SchemaVersion != 2 {
+		t.Errorf("schema_version = %d, want 2", b.SchemaVersion)
+	}
+	if len(b.Entries) != 3 {
+		t.Errorf("entries = %d, want 3", len(b.Entries))
+	}
 	if len(b.Fingerprints) != 3 {
 		t.Errorf("fingerprints = %d, want 3", len(b.Fingerprints))
 	}
@@ -120,36 +162,101 @@ func TestFromRefs(t *testing.T) {
 	if b.IsKnown("ok", "secret/data/c") {
 		t.Error("ok status should not be in baseline")
 	}
+
+	// Verify entries have correct metadata
+	for _, e := range b.Entries {
+		if e.Tool != "vaultspectre" {
+			t.Errorf("entry tool = %q, want vaultspectre", e.Tool)
+		}
+		if e.SuppressedAt.IsZero() {
+			t.Error("suppressed_at should be set")
+		}
+	}
+}
+
+func TestFromRefsWithExpiry(t *testing.T) {
+	refs := []scanner.Reference{
+		{Path: "secret/data/a", Status: "missing"},
+	}
+
+	b := FromRefs(refs, "0.5.0", 90*24*time.Hour)
+
+	if len(b.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(b.Entries))
+	}
+	if b.Entries[0].ExpiresAt == nil {
+		t.Fatal("expires_at should be set")
+	}
+	if b.Entries[0].ExpiresAt.Before(time.Now().Add(89 * 24 * time.Hour)) {
+		t.Error("expires_at should be ~90 days from now")
+	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "baseline.json")
 
-	// Create and save
 	original := FromRefs([]scanner.Reference{
 		{Path: "secret/data/x", Status: "missing"},
 		{Path: "secret/data/y", Status: "invalid"},
-	}, "0.3.0")
+	}, "0.5.0")
 
 	if err := original.Save(path); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	// Load
 	loaded, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if loaded.Version != "0.3.0" {
+	if loaded.SchemaVersion != 2 {
+		t.Errorf("schema_version = %d, want 2", loaded.SchemaVersion)
+	}
+	if loaded.Version != "0.5.0" {
 		t.Errorf("version = %q", loaded.Version)
 	}
-	if len(loaded.Fingerprints) != 2 {
-		t.Errorf("fingerprints = %d, want 2", len(loaded.Fingerprints))
+	if len(loaded.Entries) != 2 {
+		t.Errorf("entries = %d, want 2", len(loaded.Entries))
 	}
 	if !loaded.IsKnown("missing", "secret/data/x") {
 		t.Error("should be known after load")
+	}
+}
+
+func TestLoadLegacyFormat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "baseline.json")
+
+	// Write legacy format (no schema_version, no entries)
+	legacy := map[string]interface{}{
+		"version":      "0.3.0",
+		"fingerprints": []string{Fingerprint("missing", "secret/data/a")},
+	}
+	data, _ := json.Marshal(legacy)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if loaded.SchemaVersion != 2 {
+		t.Errorf("migrated schema_version = %d, want 2", loaded.SchemaVersion)
+	}
+	if len(loaded.Entries) != 1 {
+		t.Errorf("migrated entries = %d, want 1", len(loaded.Entries))
+	}
+	if loaded.Entries[0].Tool != "vaultspectre" {
+		t.Errorf("migrated tool = %q, want vaultspectre", loaded.Entries[0].Tool)
+	}
+
+	// Check backup was created
+	bakPath := path + ".bak"
+	if _, err := os.Stat(bakPath); os.IsNotExist(err) {
+		t.Error("legacy backup file should exist")
 	}
 }
 
@@ -158,8 +265,8 @@ func TestLoad_NonExistent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() should not error for nonexistent file: %v", err)
 	}
-	if len(b.Fingerprints) != 0 {
-		t.Error("empty baseline should have no fingerprints")
+	if len(b.Entries) != 0 {
+		t.Error("empty baseline should have no entries")
 	}
 }
 
