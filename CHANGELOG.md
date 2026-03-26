@@ -5,6 +5,22 @@ All notable changes to VaultSpectre will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-03-26
+
+### Added
+- `audit` command for SpectreHub invocation compatibility (`vaultspectre audit --format json`)
+- `ls` command for recursive Vault tree discovery (--tree, --count, --with-keys)
+- `who` command for reverse dependency mapping (Vault-to-code)
+- `count` command for Vault tree statistics (--by-depth, --by-prefix)
+- `serve` command for MCP server mode (AI agent typed API)
+- `--stdin` pipeline composability on grep and ls commands
+- `--from-file` offline grep from snapshot files
+- Local audit trail (`internal/audit/local.go`) for access event logging
+- Chainwatch runbook (`docs/chainwatch-runbook.yaml`)
+
+### Fixed
+- SpectreHub exit code mapping: findings→1, network→3, error→3 (SpectreHub convention)
+
 ## [0.5.0] - 2026-03-26
 
 ### Added
@@ -309,7 +325,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - License (MIT)
 - Basic project scaffolding
 
-[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.5.1
 [0.5.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.3.0
