@@ -9,11 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
+
 	"github.com/ppiankov/vaultspectre/internal/analyzer"
 	"github.com/ppiankov/vaultspectre/internal/audit"
 	"github.com/ppiankov/vaultspectre/internal/baseline"
 	"github.com/ppiankov/vaultspectre/internal/config"
 	"github.com/ppiankov/vaultspectre/internal/logging"
+	"github.com/ppiankov/vaultspectre/internal/policy"
 	"github.com/ppiankov/vaultspectre/internal/report"
 	"github.com/ppiankov/vaultspectre/internal/scanner"
 	"github.com/ppiankov/vaultspectre/internal/vault"
@@ -44,6 +47,7 @@ var (
 	updateBaseline  bool     // --update-baseline flag
 	excludeFlag     string   // --exclude flag (comma-separated globs)
 	scanTimeoutMins int      // --scan-timeout flag (minutes, 0 to disable)
+	policyPath      string   // --policy flag
 	authMethod      string   // --auth-method flag
 	roleID          string   // --role-id for AppRole
 	secretID        string   // --secret-id for AppRole
@@ -103,6 +107,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&updateBaseline, "update-baseline", false, "Save current findings as new baseline")
 	scanCmd.Flags().StringVar(&excludeFlag, "exclude", "", "Comma-separated glob patterns to exclude from scanning")
 	scanCmd.Flags().IntVar(&scanTimeoutMins, "scan-timeout", 10, "Global scan timeout in minutes (0 to disable)")
+	scanCmd.Flags().StringVar(&policyPath, "policy", "", "Path to policy YAML file for enforcement")
 	scanCmd.Flags().StringVar(&authMethod, "auth-method", "token", "Auth method: token, approle, kubernetes")
 	scanCmd.Flags().StringVar(&roleID, "role-id", os.Getenv("VAULT_ROLE_ID"), "AppRole role ID")
 	scanCmd.Flags().StringVar(&secretID, "secret-id", os.Getenv("VAULT_SECRET_ID"), "AppRole secret ID")
@@ -424,6 +429,60 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Exit with timeout code if scan was interrupted
 	if scanTimedOut {
 		return newExitError(ExitNetwork, "scan timed out after %dm: %d/%d paths validated", scanTimeoutMins, validatedPaths, totalPaths)
+	}
+
+	// Policy evaluation
+	if policyPath != "" {
+		pol, polErr := policy.Load(policyPath)
+		if polErr != nil {
+			return newExitError(ExitBadArgs, "failed to load policy: %v", polErr)
+		}
+
+		// Build summary for policy evaluation
+		paths := make([]string, 0, len(results.Secrets))
+		for p := range results.Secrets {
+			paths = append(paths, p)
+		}
+		polSummary := policy.ScanSummary{
+			StatusCounts: map[string]int{
+				"ok":               results.Summary.StatusOK,
+				"missing":          results.Summary.StatusMissing,
+				"access_denied":    results.Summary.StatusAccessDenied,
+				"invalid":          results.Summary.StatusInvalid,
+				"error":            results.Summary.StatusError,
+				"needs_resolution": results.Summary.StatusNeedsResolution,
+			},
+			TotalSecrets: results.Summary.TotalReferences,
+			StaleSecrets: results.Summary.StaleSecrets,
+			Paths:        paths,
+		}
+
+		evalResult := pol.Evaluate(polSummary)
+
+		if outputFormat == "json" {
+			// Include policy results in JSON output
+			polJSON, _ := json.Marshal(evalResult)
+			slog.Info("policy evaluation", "result", string(polJSON))
+		} else {
+			// Print policy results as text
+			fmt.Println("\nPolicy evaluation:")
+			for _, r := range evalResult.Rules {
+				icon := "✓"
+				if r.Status == "fail" {
+					icon = "✗"
+				}
+				fmt.Printf("  %s %s: %s\n", icon, r.Rule, r.Message)
+			}
+			if evalResult.Passed {
+				fmt.Println("\nPolicy: PASSED")
+			} else {
+				fmt.Println("\nPolicy: FAILED")
+			}
+		}
+
+		if !evalResult.Passed {
+			return newExitError(ExitFindings, "policy evaluation failed")
+		}
 	}
 
 	// Exit with error if requested and issues found

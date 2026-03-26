@@ -32,6 +32,23 @@ Scans code for Vault secret references and validates against live Vault.
 - `--stale-days N` — stale secret threshold (default 90)
 - `--timeout N` — Vault API timeout in seconds (default 30)
 
+**Policy enforcement:**
+- `--policy policy.yaml` — evaluate scan results against policy rules
+
+**Policy file format (YAML):**
+```yaml
+max_findings:
+  missing: 0
+  error: 0
+required_path_prefixes:
+  - "kv/projects/"
+forbidden_path_prefixes:
+  - "kv/deprecated/"
+max_stale_percent: 10
+```
+
+Generate with: `vaultspectre init --with-policy`
+
 **Authentication flags (all commands that connect to Vault):**
 - `--auth-method token` — use static token (default)
 - `--auth-method approle --role-id ID --secret-id ID` — AppRole auth
