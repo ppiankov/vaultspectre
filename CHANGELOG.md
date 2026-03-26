@@ -5,6 +5,57 @@ All notable changes to VaultSpectre will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-26
+
+### Added
+- `grep` command for reverse Vault key search — recursively walk KV trees, match by key/value pattern
+- `diff` command for comparing two scan reports — added/removed/changed findings with exit 6 on new findings
+- `doctor` command for config and connectivity checks — ANCC-compliant schema with status/readiness/provenance
+- `correlate` command for cross-tool CH user to Vault secret mapping (--from-file mode)
+- `ci-init` command for generating CI pipeline snippets (GitLab CI and GitHub Actions)
+- AppRole and Kubernetes auth methods (`--auth-method approle|kubernetes`)
+- Global scan timeout (`--scan-timeout`, default 10m) with partial result flushing
+- Policy-as-code enforcement (`--policy policy.yaml`) with max_findings, path prefix, and stale rules
+- Credential format verification (`--verify-format`) detecting json_blob stored as string, invalid URIs
+- Built-in secret redaction engine with pastewatch-cli integration — JSON output never contains raw values
+- `--format json` on version command for agent compatibility
+- `--no-redact` flag (TTY only, errors on pipe/JSON) for terminal debugging
+- Exit code 3 (ExitNotFound) for grep with no matches
+- Shared baseline schema (v2) with tool, rule_id, resource, suppressed_at, expires_at fields
+- Automatic migration from legacy baseline format (backs up as .baseline.bak)
+- Baseline entry expiry support via FromRefs duration parameter
+- `init --with-policy` generates example policy.yaml
+
+### Changed
+- Cobra bumped to v1.10.2 (aligned with clickspectre)
+- Doctor output now matches ANCC schema: status, version, revision, source.repo, readiness
+- slog.Debug no longer logs variable values (replaced with '[set]' placeholder)
+- Vault API error messages truncated before logging to prevent data leakage
+
+### Fixed
+- KV v2 path coercion: paths with a segment named "data" no longer trigger false /data/ insertion
+- Doctor token masking: handles tokens of any length without panic
+
+### Security
+- JSON output structurally cannot contain raw secret values (SpectreHub contract compliance)
+- Redaction uses pastewatch-cli when available, falls back to built-in regex patterns
+- Pipe detection forces redaction when stdout is not a TTY
+- Sensitive key detection: PASSWORD, TOKEN, SECRET, API_KEY patterns auto-masked
+- Value pattern detection: Vault tokens (hvs.*), JWT, AWS keys, DSN credentials, base64 strings
+
+## [0.4.0] - 2026-03-22
+
+### Added
+- ANCC-compliant docs/SKILL.md with commands, flags, exit codes, JSON schemas, handoffs, failure modes
+- `--format` flag as primary output format flag (ANCC convention), `--output` deprecated as alias
+- `init` command for generating .vaultspectre.yaml config with sensible defaults
+- Exclude patterns (`--exclude` flag + `exclude_patterns` config) wired to scanner
+- Granular exit codes: 0 (success), 1 (error), 2 (bad args), 5 (network), 6 (findings)
+- `watch` command for continuous drift detection with delta reporting
+- Slack webhook notifications for watch mode (`--slack-webhook`)
+- Notifier interface for pluggable notification channels
+- Deprecated section in SKILL.md for --output flag
+
 ## [0.3.0] - 2026-02-22
 
 ### Added
@@ -258,7 +309,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - License (MIT)
 - Basic project scaffolding
 
-[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/ppiankov/vaultspectre/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.5.0
+[0.4.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.4.0
+[0.3.0]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.3.0
 [0.2.3]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.3
 [0.2.2]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.2
 [0.2.1]: https://github.com/ppiankov/vaultspectre/releases/tag/v0.2.1
