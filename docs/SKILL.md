@@ -182,6 +182,27 @@ Check configuration, connectivity, and readiness.
 }
 ```
 
+### vaultspectre correlate
+
+Correlate Vault secrets with ClickHouse user activity. Uses `--from-file` mode (no live connections).
+
+**Flags:**
+- `--vault-file path` — vaultspectre grep JSON output (required)
+- `--ch-file path` — clickspectre user activity JSON (required)
+- `--key-field CLICKHOUSE_USER` — secret key name containing CH username
+- `--format json` — structured JSON output
+
+**Classifications:**
+- `active_with_vault` — queries + Vault path (healthy)
+- `active_no_vault` — queries but no Vault path (hardcoded creds?)
+- `inactive_with_vault` — Vault path, zero queries (cleanup candidate)
+- `inactive_no_vault` — no queries, no Vault path (orphan)
+- `vault_only` — in Vault but absent from CH (stale path)
+
+**Exit codes:**
+- 0: all users active or no findings
+- 6: inactive/stale users found
+
 ### vaultspectre ci-init
 
 Generate a ready-to-paste CI pipeline snippet.

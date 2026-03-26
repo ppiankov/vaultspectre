@@ -27,4 +27,5 @@ func init() {
 	rootCmd.AddCommand(grepCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(ciInitCmd)
+	rootCmd.AddCommand(correlateCmd)
 }

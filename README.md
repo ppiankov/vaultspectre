@@ -55,6 +55,7 @@ vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 | `vaultspectre grep` | Search Vault secrets by key or value pattern |
 | `vaultspectre watch` | Continuous drift detection with delta reporting |
 | `vaultspectre init` | Generate starter `.vaultspectre.yaml` config |
+| `vaultspectre correlate` | Cross-tool CH user to Vault secret mapping |
 | `vaultspectre doctor` | Check config, connectivity, and readiness |
 | `vaultspectre ci-init` | Generate CI pipeline snippet (GitLab/GitHub) |
 | `vaultspectre version` | Print version |
