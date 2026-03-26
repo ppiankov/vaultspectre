@@ -16,13 +16,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// SnapshotEntry represents a single secret's metadata (never contains values).
+type SnapshotEntry struct {
+	Path string   `json:"path"`
+	Keys []string `json:"keys,omitempty"` // Key names only
+}
+
+// Snapshot is the portable Vault state file format.
+type Snapshot struct {
+	Tool      string          `json:"tool"`
+	Timestamp string          `json:"timestamp"`
+	BasePath  string          `json:"base_path"`
+	Entries   []SnapshotEntry `json:"entries"`
+}
+
 var (
-	lsPath   string
-	lsDepth  int
-	lsTree   bool
-	lsCount  bool
-	lsFormat string
-	lsStdin  bool
+	lsPath     string
+	lsDepth    int
+	lsTree     bool
+	lsCount    bool
+	lsFormat   string
+	lsStdin    bool
+	lsWithKeys bool
 )
 
 // LsResult holds the output for --format json.
@@ -60,6 +75,7 @@ Exit Codes:
 func init() {
 	lsCmd.Flags().StringVar(&lsPath, "path", "kv", "Vault path to list")
 	lsCmd.Flags().BoolVar(&lsStdin, "stdin", false, "Read base paths from stdin (one per line)")
+	lsCmd.Flags().BoolVar(&lsWithKeys, "with-keys", false, "Include key names in output (reads secrets, never includes values)")
 	lsCmd.Flags().IntVar(&lsDepth, "depth", 0, "Max recursion depth (0 = unlimited)")
 	lsCmd.Flags().BoolVar(&lsTree, "tree", false, "Show indented tree hierarchy")
 	lsCmd.Flags().BoolVar(&lsCount, "count", false, "Show secret count per subtree")
@@ -120,12 +136,14 @@ func runLs(cmd *cobra.Command, args []string) error {
 		return newExitError(ExitBadArgs, "authentication failed: %v", err)
 	}
 
-	// Use walker in dry-run mode (list only, no secret reads)
+	// When --with-keys: read secrets to get key names (never values)
+	// Otherwise: dry-run mode (list only)
 	matcher := grep.NewMatcher("", "", false)
 	walker := grep.NewWalker(client, matcher, grep.WalkerConfig{
-		MaxDepth: lsDepth,
-		Workers:  10,
-		DryRun:   true,
+		MaxDepth:   lsDepth,
+		Workers:    10,
+		DryRun:     !lsWithKeys,
+		ShowValues: false, // Never show values in ls
 	})
 
 	var result *grep.GrepResult
@@ -166,6 +184,28 @@ func runLs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Output
+	if lsFormat == "json" && lsWithKeys {
+		// Snapshot format with key names
+		entries := make([]SnapshotEntry, 0, len(result.Matches))
+		for _, m := range result.Matches {
+			keyNames := make([]string, len(m.Keys))
+			for k, key := range m.Keys {
+				keyNames[k] = key.Name
+			}
+			entries = append(entries, SnapshotEntry{Path: m.Path, Keys: keyNames})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+		snapshot := Snapshot{
+			Tool:      "vaultspectre",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			BasePath:  lsPath,
+			Entries:   entries,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(snapshot)
+	}
+
 	if lsFormat == "json" {
 		lsResult := LsResult{
 			Paths:        paths,

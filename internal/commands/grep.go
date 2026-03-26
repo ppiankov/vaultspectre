@@ -30,6 +30,7 @@ var (
 	grepVerifyFormat  bool
 	grepNoRedact      bool
 	grepStdin         bool
+	grepFromFile      string
 )
 
 var grepCmd = &cobra.Command{
@@ -74,6 +75,7 @@ func init() {
 	grepCmd.Flags().BoolVar(&grepVerifyFormat, "verify-format", true, "Verify credential value formats (default on)")
 	grepCmd.Flags().BoolVar(&grepNoRedact, "no-redact", false, "Show raw values without redaction (TTY only, never with --format json)")
 	grepCmd.Flags().BoolVar(&grepStdin, "stdin", false, "Read Vault paths from stdin (one per line) instead of walking")
+	grepCmd.Flags().StringVar(&grepFromFile, "from-file", "", "Grep offline from a snapshot file (from ls --with-keys --format json)")
 	grepCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	grepCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	grepCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
@@ -99,6 +101,11 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 		if cfg.VaultAddr != "" && !cmd.Flags().Changed("vault-addr") && vaultAddr == "" {
 			vaultAddr = cfg.VaultAddr
 		}
+	}
+
+	// Offline mode: grep from snapshot file
+	if grepFromFile != "" {
+		return runGrepOffline(cmd)
 	}
 
 	if vaultAddr == "" {
@@ -252,6 +259,57 @@ func printGrepText(result *grep.GrepResult, dryRun bool) {
 		parts = append(parts, fmt.Sprintf("%d skipped (permission denied)", result.TotalSkipped))
 	}
 	fmt.Fprintln(os.Stderr, strings.Join(parts, ", "))
+}
+
+// runGrepOffline greps a snapshot file without Vault connection.
+func runGrepOffline(_ *cobra.Command) error {
+	data, err := os.ReadFile(grepFromFile)
+	if err != nil {
+		return newExitError(ExitBadArgs, "failed to read snapshot: %v", err)
+	}
+
+	var snapshot Snapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return newExitError(ExitBadArgs, "invalid snapshot JSON: %v", err)
+	}
+
+	if grepKeyPattern == "" {
+		return newExitError(ExitBadArgs, "--key-pattern is required for offline grep")
+	}
+
+	matcher := grep.NewMatcher(grepKeyPattern, "", grepCaseSensitive)
+
+	var result grep.GrepResult
+	for _, entry := range snapshot.Entries {
+		// Build fake data map with key names (no values in snapshot)
+		fakeData := make(map[string]interface{})
+		for _, k := range entry.Keys {
+			fakeData[k] = "" // Empty value — snapshot has no values
+		}
+
+		matches := matcher.Match(fakeData, false)
+		if len(matches) > 0 {
+			result.Matches = append(result.Matches, grep.PathMatch{
+				Path: entry.Path,
+				Keys: matches,
+			})
+		}
+		result.TotalScanned++
+	}
+	result.MatchCount = len(result.Matches)
+
+	if grepFormat == "json" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	printGrepText(&result, false)
+
+	if result.MatchCount == 0 {
+		return newExitError(ExitNotFound, "no matches found in snapshot")
+	}
+	return nil
 }
 
 // readStdinPaths reads Vault paths from stdin, one per line.
