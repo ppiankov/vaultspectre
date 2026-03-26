@@ -16,6 +16,18 @@ go install github.com/ppiankov/vaultspectre/cmd/vaultspectre@latest
 
 ## Commands
 
+### vaultspectre audit
+
+SpectreHub-compatible entry point. Equivalent to `scan` with spectrehub output format and SpectreHub exit code conventions. This is what SpectreHub invokes.
+
+**Exit codes (SpectreHub convention):**
+- 0: success (no findings)
+- 1: findings detected
+- 2: invalid arguments
+- 3: runtime error
+
+Accepts all `scan` flags. Default format: spectrehub.
+
 ### vaultspectre scan
 
 Scans code for Vault secret references and validates against live Vault.
