@@ -28,4 +28,5 @@ func init() {
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(ciInitCmd)
 	rootCmd.AddCommand(correlateCmd)
+	rootCmd.AddCommand(lsCmd)
 }

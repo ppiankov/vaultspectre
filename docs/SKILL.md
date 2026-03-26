@@ -85,6 +85,24 @@ Generate a starter `.vaultspectre.yaml` config file.
 - 0: config created
 - 1: config already exists or error
 
+### vaultspectre ls
+
+List Vault secret paths recursively. No secret data is read.
+
+**Flags:**
+- `--path kv/projects/` — Vault path to list (also accepts positional arg)
+- `--depth N` — max recursion depth (0 = unlimited)
+- `--tree` — indented tree hierarchy output
+- `--count` — secret count per subtree (like `du -sh`)
+- `--format json` — structured JSON output
+
+**Exit codes:**
+- 0: paths found
+- 3: empty tree
+- 5: Vault unreachable
+
+Output is one path per line (pipeable to `grep --stdin`).
+
 ### vaultspectre diff
 
 Compare two scan reports and show changes (added, removed, status changes).
