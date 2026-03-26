@@ -263,6 +263,36 @@ Generate a ready-to-paste CI pipeline snippet.
 - 0: snippet printed
 - 2: invalid format
 
+### vaultspectre serve
+
+Start an MCP (Model Context Protocol) server over stdio. Exposes vaultspectre capabilities as typed tools for AI agents.
+
+**Tools exposed:**
+- `vaultspectre_ls` — list Vault paths recursively
+- `vaultspectre_grep` — search secrets by key/value pattern (values always redacted)
+- `vaultspectre_count` — count secrets in a tree
+- `vaultspectre_doctor` — check connectivity and config
+
+**Flags:**
+- `--vault-addr` — Vault server address
+- `--token` — Vault authentication token
+- `--timeout N` — Vault API timeout in seconds
+
+All tool responses have secret values structurally redacted.
+
+**Claude Code config:**
+```json
+{
+  "mcpServers": {
+    "vaultspectre": {
+      "command": "vaultspectre",
+      "args": ["serve"],
+      "env": {"VAULT_ADDR": "...", "VAULT_TOKEN": "..."}
+    }
+  }
+}
+```
+
 ### vaultspectre version
 
 Print version, commit, Go version, and platform.

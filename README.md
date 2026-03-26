@@ -50,19 +50,22 @@ vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 
 | Command | Description |
 |---------|-------------|
-| `vaultspectre ls` | List Vault secret paths recursively (tree, count) |
+| `vaultspectre ls` | List Vault secret paths recursively (--tree, --count, --with-keys) |
 | `vaultspectre scan` | Scan code for Vault references, validate against live Vault |
+| `vaultspectre audit` | SpectreHub-compatible scan (spectre/v1 envelope, mapped exit codes) |
+| `vaultspectre who` | Find which codebases reference a Vault path (rotation readiness) |
+| `vaultspectre grep` | Search Vault secrets by key or value pattern (--stdin, --from-file) |
 | `vaultspectre diff` | Compare two scan reports and show changes |
-| `vaultspectre who` | Find which codebases reference a Vault path |
-| `vaultspectre grep` | Search Vault secrets by key or value pattern |
+| `vaultspectre count` | Count secrets in a Vault tree (--by-depth, --by-prefix) |
 | `vaultspectre watch` | Continuous drift detection with delta reporting |
-| `vaultspectre init` | Generate starter `.vaultspectre.yaml` config |
 | `vaultspectre correlate` | Cross-tool CH user to Vault secret mapping |
-| `vaultspectre doctor` | Check config, connectivity, and readiness |
+| `vaultspectre init` | Generate starter config and policy files (--with-policy) |
+| `vaultspectre doctor` | Check config, connectivity, and readiness (ANCC schema) |
 | `vaultspectre ci-init` | Generate CI pipeline snippet (GitLab/GitHub) |
-| `vaultspectre version` | Print version |
+| `vaultspectre serve` | MCP server for AI agent integration (stdio) |
+| `vaultspectre version` | Print version (--format json) |
 
-Key flags: `--format json\|sarif\|spectrehub`, `--exclude vendor/**,testdata/**`, `--fail-on-missing`, `--detect-vars`, `--baseline`, `--slack-webhook`
+Key flags: `--format json\|sarif\|spectrehub`, `--exclude`, `--fail-on-missing`, `--policy`, `--auth-method`, `--stdin`, `--from-file`, `--baseline`, `--slack-webhook`
 
 ## Exit codes
 

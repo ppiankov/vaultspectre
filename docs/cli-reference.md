@@ -1,101 +1,235 @@
 # CLI Reference
 
+## `vaultspectre ls`
+
+List Vault secret paths recursively. No secret data is read.
+
+```bash
+vaultspectre ls kv/projects/ --depth 2
+vaultspectre ls kv/ --tree
+vaultspectre ls kv/ --count
+vaultspectre ls kv/ --with-keys --format json > snapshot.json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--path` | Vault path to list (also positional arg, default `kv`) |
+| `--depth` | Max recursion depth (0 = unlimited) |
+| `--tree` | Indented tree hierarchy |
+| `--count` | Secret count per subtree |
+| `--with-keys` | Include key names (reads secrets, never values) |
+| `--stdin` | Read base paths from stdin |
+| `--format` | Output format: `text`, `json` |
+
 ## `vaultspectre scan`
 
 Scan a repository and validate against Vault.
 
 ```bash
-vaultspectre scan \
-  --repo ./my-repo \
-  --vault-addr https://vault.example.com \
-  --token $VAULT_TOKEN
+vaultspectre scan --repo . --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
 ```
-
-### Flags
 
 | Flag | Description |
 |------|-------------|
-| `--repo` | Repository path to scan (default `.`) |
-| `--vault-addr` | Vault server address (or `VAULT_ADDR` env) |
-| `--token` | Vault authentication token (or `VAULT_TOKEN` env) |
-| `--namespace` | Vault namespace, Enterprise only (or `VAULT_NAMESPACE` env) |
-| `--format` | Output format: `text`, `json`, `sarif`, `spectrehub` (default `text`) |
-| `--exclude` | Comma-separated glob patterns to skip (e.g. `vendor/**,testdata/**`) |
-| `--fail-on-missing` | Exit 6 if missing secrets found (CI/CD) |
-| `--stale-days` | Flag secrets not accessed in N days (default 90, 0 to disable) |
-| `--audit-log-path` | Path to Vault audit log for access-based staleness |
-| `--audit-window-days` | Lookback window for audit log analysis (default 90) |
-| `--var` | Variable substitution `key=value` (repeatable) |
-| `--var-file` | YAML file containing variable values |
-| `--detect-vars` | Auto-detect variables from Ansible inventory |
-| `--baseline` | Path to baseline file for suppressing known findings |
-| `--update-baseline` | Save current findings as new baseline |
+| `--repo` | Repository path (default `.`) |
+| `--vault-addr` | Vault address (or `VAULT_ADDR` env) |
+| `--token` | Vault token (or `VAULT_TOKEN` env) |
+| `--namespace` | Vault namespace, Enterprise only |
+| `--format` | Output: `text`, `json`, `sarif`, `spectrehub` |
+| `--exclude` | Comma-separated glob patterns to skip |
+| `--fail-on-missing` | Exit 6 if missing secrets found |
+| `--stale-days` | Stale threshold in days (default 90, 0 to disable) |
+| `--audit-log-path` | Vault audit log for access-based staleness |
+| `--var` | Variable `key=value` (repeatable) |
+| `--var-file` | YAML variable file |
+| `--detect-vars` | Auto-detect from Ansible inventory |
+| `--baseline` | Baseline file for suppressing known findings |
+| `--update-baseline` | Save current findings as baseline |
+| `--policy` | Policy YAML for enforcement |
+| `--scan-timeout` | Global scan timeout in minutes (default 10) |
 | `--timeout` | Vault API timeout in seconds (default 30) |
-| `--verbose` | Show detailed variable resolution and path info |
+| `--auth-method` | `token`, `approle`, `kubernetes` |
+| `--role-id` | AppRole role ID |
+| `--secret-id` | AppRole secret ID |
+| `--k8s-role` | Kubernetes auth role |
+| `--verbose` | Detailed output |
 
-### Examples
+## `vaultspectre audit`
+
+SpectreHub-compatible scan. Default format: spectrehub. Exit codes mapped to SpectreHub convention.
 
 ```bash
-# JSON output
-vaultspectre scan --repo . --format json
-
-# Fail on missing (CI/CD)
-vaultspectre scan --repo . --fail-on-missing
-
-# Exclude vendor and test files
-vaultspectre scan --repo . --exclude "vendor/**,testdata/**,*_test.go"
-
-# Stale secret detection with audit logs
-vaultspectre scan --repo . --stale-days 60 \
-  --audit-log-path /var/log/vault/audit.log
-
-# SARIF for GitHub Security tab
-vaultspectre scan --repo . --format sarif > results.sarif
+vaultspectre audit --format json
 ```
+
+Accepts all `scan` flags. SpectreHub invokes this as `vaultspectre audit --format json`.
+
+| Exit | SpectreHub meaning |
+|------|-------------------|
+| 0 | Success |
+| 1 | Findings detected |
+| 2 | Invalid arguments |
+| 3 | Runtime error |
+
+## `vaultspectre who`
+
+Find which codebases reference a Vault path (rotation readiness).
+
+```bash
+vaultspectre who kv/payments/db --repos ~/dev/svc-a,~/dev/svc-b
+vaultspectre who kv/payments/db --repos @repos.txt
+vaultspectre ls kv/payments/ | vaultspectre who --stdin --repos ~/dev/svc-a
+```
+
+| Flag | Description |
+|------|-------------|
+| `--repos` | Comma-separated repo paths, or `@file` |
+| `--stdin` | Read target paths from stdin |
+| `--format` | Output: `text`, `json` |
+
+## `vaultspectre grep`
+
+Search Vault secrets by key or value pattern.
+
+```bash
+vaultspectre grep --path kv/projects/ --key-pattern "CLICKHOUSE_*"
+vaultspectre grep --path kv/ --key-pattern "*" --value-pattern "10.200.4.206"
+vaultspectre ls kv/ | vaultspectre grep --stdin --key-pattern PASSWORD
+vaultspectre grep --from-file snapshot.json --key-pattern PASSWORD
+```
+
+| Flag | Description |
+|------|-------------|
+| `--path` | Vault path to search (default `kv`) |
+| `--key-pattern` | Comma-separated glob patterns for key names |
+| `--value-pattern` | Pattern for value content |
+| `--show-values` | Show values (redacted by default) |
+| `--no-redact` | Raw values (TTY only, errors on pipe/JSON) |
+| `--depth` | Max recursion depth |
+| `--workers` | Concurrent readers (default 10) |
+| `--dry-run` | List paths without reading |
+| `--stdin` | Read paths from stdin |
+| `--from-file` | Grep offline from snapshot JSON |
+| `--verify-format` | Check credential value formats (default on) |
+| `--case-sensitive` | Case-sensitive matching |
+| `--format` | Output: `text`, `json` |
+
+## `vaultspectre diff`
+
+Compare two scan reports and show changes.
+
+```bash
+vaultspectre diff --old baseline.json --new current.json
+vaultspectre diff --old baseline.json --new current.json --format json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--old` | Old/baseline report JSON (required) |
+| `--new` | New/current report JSON (required) |
+| `--format` | Output: `text`, `json` |
+
+## `vaultspectre count`
+
+Count secrets in a Vault tree. No secret data is read.
+
+```bash
+vaultspectre count kv/
+vaultspectre count kv/ --by-depth
+vaultspectre count kv/ --by-prefix 3
+```
+
+| Flag | Description |
+|------|-------------|
+| `--path` | Vault path (also positional arg) |
+| `--depth` | Max recursion depth |
+| `--by-depth` | Group by depth level |
+| `--by-prefix` | Group by first N path segments |
+| `--format` | Output: `text`, `json` |
 
 ## `vaultspectre watch`
 
 Continuous drift detection with delta reporting.
 
 ```bash
-vaultspectre watch --interval 5m --repo . \
-  --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
+vaultspectre watch --interval 5m --slack-webhook $SLACK_URL
 ```
-
-### Flags
 
 All `scan` flags apply, plus:
 
 | Flag | Description |
 |------|-------------|
-| `--interval` | Scan interval (default `5m`, e.g. `1m`, `1h`) |
-| `--slack-webhook` | Slack webhook URL for notifications |
+| `--interval` | Scan interval (default `5m`) |
+| `--slack-webhook` | Slack webhook URL |
 
-### Examples
+## `vaultspectre correlate`
+
+Cross-tool CH user to Vault secret mapping (offline, no live connections).
 
 ```bash
-# Watch every minute with Slack alerts
-vaultspectre watch --interval 1m --slack-webhook $SLACK_URL
-
-# Watch with JSON delta output
-vaultspectre watch --interval 5m --format json
+vaultspectre grep --path kv/ --key-pattern "CLICKHOUSE_USER" --show-values --format json > vault.json
+clickspectre analyze --by-user --format json > ch.json
+vaultspectre correlate --vault-file vault.json --ch-file ch.json
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--vault-file` | Vaultspectre grep JSON (required) |
+| `--ch-file` | Clickspectre user activity JSON (required) |
+| `--key-field` | Secret key containing CH username (default `CLICKHOUSE_USER`) |
+| `--format` | Output: `text`, `json` |
 
 ## `vaultspectre init`
 
-Generate a starter `.vaultspectre.yaml` config file.
+Generate config and policy files.
 
 ```bash
 vaultspectre init
-vaultspectre init --force  # overwrite existing
+vaultspectre init --with-policy
+vaultspectre init --force
 ```
+
+## `vaultspectre doctor`
+
+Check config, connectivity, and readiness (ANCC schema).
+
+```bash
+vaultspectre doctor
+vaultspectre doctor --format json
+```
+
+JSON output matches ANCC doctor schema: status, version, revision, source.repo, readiness.
+
+## `vaultspectre ci-init`
+
+Generate CI pipeline snippet.
+
+```bash
+vaultspectre ci-init --format gitlab
+vaultspectre ci-init --format github --auth-method approle
+```
+
+| Flag | Description |
+|------|-------------|
+| `--format` | `gitlab` (default), `github` |
+| `--auth-method` | `token`, `approle`, `kubernetes` |
+| `--stage` | CI stage name (default `validate`) |
+
+## `vaultspectre serve`
+
+MCP server for AI agent integration (stdio transport).
+
+```bash
+vaultspectre serve
+```
+
+Tools: `vaultspectre_ls`, `vaultspectre_grep`, `vaultspectre_count`, `vaultspectre_doctor`. All responses redacted.
 
 ## `vaultspectre version`
 
-Print version and commit hash.
-
 ```bash
 vaultspectre version
+vaultspectre version --format json
 ```
 
 ## Exit codes
@@ -104,69 +238,31 @@ vaultspectre version
 |------|---------|
 | 0 | Success, no findings |
 | 1 | Internal error |
-| 2 | Invalid arguments or config error |
-| 5 | Network/connectivity error (Vault unreachable) |
-| 6 | Findings detected (missing/stale/invalid secrets) |
+| 2 | Invalid arguments or config |
+| 3 | No matches (grep/who/ls) |
+| 5 | Network error (Vault unreachable) |
+| 6 | Findings detected |
+
+## Authentication
+
+| Method | Flags |
+|--------|-------|
+| Token (default) | `--token` or `VAULT_TOKEN` |
+| AppRole | `--auth-method approle --role-id ID --secret-id ID` |
+| Kubernetes | `--auth-method kubernetes --k8s-role ROLE` |
 
 ## Configuration
 
-### Environment variables
+Environment: `VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_NAMESPACE`, `VAULT_ROLE_ID`, `VAULT_SECRET_ID`
 
-- `VAULT_ADDR` — Vault server address
-- `VAULT_TOKEN` — Vault authentication token
-- `VAULT_NAMESPACE` — Vault namespace (Enterprise)
-
-### Config file
-
-`.vaultspectre.yaml` in current directory or home directory. Generate with `vaultspectre init`.
-
-CLI flags override config file values.
-
-## Scanner coverage
-
-Finds Vault paths in:
-- Ansible playbooks (`hashi_vault`, `vault_kv2_get`)
-- YAML configurations
-- Jinja templates
-- Python / Bash scripts
-- Terraform / Helm / Kustomize
-- Go source code
-- Kubernetes manifests
-- Environment files
-
-## Status classifications
-
-| Status | Meaning |
-|--------|---------|
-| `ok` | Exists and accessible |
-| `missing` | Referenced in code but not in Vault |
-| `access_denied` | Likely exists, no permission |
-| `invalid` | Malformed or not resolvable |
-| `needs_resolution` | Contains variables, not verifiable without values |
-| `skipped_policy` | Skipped (policy wildcard path) |
-| `stale` | Exists but not accessed within threshold |
+Config file: `.vaultspectre.yaml` (generate with `vaultspectre init`). CLI flags override.
 
 ## Installation
 
-### Homebrew
-
 ```bash
 brew install ppiankov/tap/vaultspectre
-```
-
-### Docker
-
-```bash
-docker run ghcr.io/ppiankov/vaultspectre scan --repo /repo --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
-```
-
-### GitHub Action
-
-```yaml
-- uses: ppiankov/vaultspectre-action@v1
-  with:
-    vault-addr: ${{ secrets.VAULT_ADDR }}
-    token: ${{ secrets.VAULT_TOKEN }}
-    format: sarif
-    upload-sarif: 'true'
+# or
+go install github.com/ppiankov/vaultspectre/cmd/vaultspectre@latest
+# or
+docker run ghcr.io/ppiankov/vaultspectre scan --repo /repo
 ```
