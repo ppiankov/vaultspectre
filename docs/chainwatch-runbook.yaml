@@ -1,0 +1,62 @@
+# Chainwatch runbook for vaultspectre operations
+# Install: copy to chainwatch config or reference via --runbook flag
+#
+# vaultspectre is read-only by design. These rules enforce safe
+# handling of the --show-values and --no-redact flags which can
+# expose secret values in terminal output.
+
+name: vaultspectre
+version: "1.0"
+tool: vaultspectre
+category: security
+
+rules:
+  # Block --no-redact when output is piped (secret leak prevention)
+  - id: vs-001
+    pattern: "vaultspectre * --no-redact *"
+    condition: stdout_is_pipe
+    decision: deny
+    reason: "--no-redact with piped output would leak secrets to downstream process"
+
+  # Block --show-values piped to network commands
+  - id: vs-002
+    pattern: "vaultspectre * --show-values *"
+    condition: pipe_to_network
+    pipe_targets: ["curl", "wget", "nc", "netcat", "http", "httpie"]
+    decision: deny
+    reason: "secret values must not be sent over network via pipe"
+
+  # Require approval for --no-redact on TTY
+  - id: vs-003
+    pattern: "vaultspectre * --no-redact *"
+    condition: stdout_is_tty
+    decision: require_approval
+    approval_key: vault_raw_values
+    ttl: 300
+    reason: "displaying raw secret values — confirm this is intentional"
+
+  # Audit all --show-values usage regardless of redaction
+  - id: vs-004
+    pattern: "vaultspectre * --show-values *"
+    decision: allow
+    audit: true
+    audit_fields:
+      - command
+      - args
+      - timestamp
+      - user
+      - redacted
+
+  # Allow all other vaultspectre commands (read-only, safe by design)
+  - id: vs-005
+    pattern: "vaultspectre *"
+    decision: allow
+    audit: false
+
+metadata:
+  author: ppiankov
+  created: "2026-03-26"
+  description: >
+    Enforces safe handling of secret values in vaultspectre output.
+    Blocks --no-redact when piped, requires approval for raw display,
+    audits all --show-values invocations.
