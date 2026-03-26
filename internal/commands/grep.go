@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -28,6 +29,7 @@ var (
 	grepCaseSensitive bool
 	grepVerifyFormat  bool
 	grepNoRedact      bool
+	grepStdin         bool
 )
 
 var grepCmd = &cobra.Command{
@@ -71,6 +73,7 @@ func init() {
 	grepCmd.Flags().BoolVar(&grepCaseSensitive, "case-sensitive", false, "Case-sensitive pattern matching")
 	grepCmd.Flags().BoolVar(&grepVerifyFormat, "verify-format", true, "Verify credential value formats (default on)")
 	grepCmd.Flags().BoolVar(&grepNoRedact, "no-redact", false, "Show raw values without redaction (TTY only, never with --format json)")
+	grepCmd.Flags().BoolVar(&grepStdin, "stdin", false, "Read Vault paths from stdin (one per line) instead of walking")
 	grepCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	grepCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	grepCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
@@ -155,8 +158,26 @@ func runGrep(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintln(os.Stderr, "NOTE: secret values are redacted (use --no-redact on a terminal for raw values)")
 	}
 
+	// Validate stdin vs path
+	if grepStdin && cmd.Flags().Changed("path") {
+		return newExitError(ExitBadArgs, "--stdin and --path are mutually exclusive")
+	}
+
 	slog.Info("searching vault", "path", grepPath, "key_pattern", grepKeyPattern)
-	result, err := walker.Walk(grepPath)
+
+	var result *grep.GrepResult
+	if grepStdin {
+		paths, scanErr := readStdinPaths()
+		if scanErr != nil {
+			return scanErr
+		}
+		if len(paths) == 0 {
+			return newExitError(ExitNotFound, "no paths provided on stdin")
+		}
+		result, err = walker.WalkPaths(paths)
+	} else {
+		result, err = walker.Walk(grepPath)
+	}
 	if err != nil {
 		return newExitError(ExitNetwork, "vault search failed: %v", err)
 	}
@@ -231,6 +252,22 @@ func printGrepText(result *grep.GrepResult, dryRun bool) {
 		parts = append(parts, fmt.Sprintf("%d skipped (permission denied)", result.TotalSkipped))
 	}
 	fmt.Fprintln(os.Stderr, strings.Join(parts, ", "))
+}
+
+// readStdinPaths reads Vault paths from stdin, one per line.
+func readStdinPaths() ([]string, error) {
+	var paths []string
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			paths = append(paths, line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read stdin: %w", err)
+	}
+	return paths, nil
 }
 
 // redactValues redacts secret values in grep results in-place.

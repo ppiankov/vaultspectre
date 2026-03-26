@@ -160,6 +160,73 @@ func (w *Walker) Walk(basePath string) (*GrepResult, error) {
 	return result, nil
 }
 
+// WalkPaths reads specific paths (from stdin) instead of recursive walking.
+func (w *Walker) WalkPaths(paths []string) (*GrepResult, error) {
+	result := &GrepResult{}
+
+	// Determine mount from first path
+	mount := ""
+	if len(paths) > 0 {
+		mount, _ = splitMountPath(paths[0])
+	}
+
+	for _, path := range paths {
+		if w.dryRun {
+			result.Matches = append(result.Matches, PathMatch{Path: path})
+			result.TotalScanned++
+			continue
+		}
+
+		// Read the secret
+		if m, _ := splitMountPath(path); m != "" {
+			mount = m
+		}
+		kvReadPath := mount + "/data/" + strings.TrimPrefix(path, mount+"/")
+
+		secret, err := w.client.Read(kvReadPath)
+		if err != nil {
+			if isPermissionError(err) {
+				result.TotalSkipped++
+				slog.Warn("permission denied, skipping", "path", path)
+				continue
+			}
+			// Try direct path (KV v1)
+			secret, err = w.client.Read(path)
+			if err != nil {
+				slog.Debug("failed to read secret", "path", path, "error", sanitizeError(err))
+				result.TotalScanned++
+				continue
+			}
+		}
+		result.TotalScanned++
+
+		if secret == nil || secret.Data == nil {
+			continue
+		}
+
+		data := secret.Data
+		if nested, ok := data["data"].(map[string]interface{}); ok {
+			data = nested
+		}
+
+		matches := w.matcher.Match(data, w.showValues)
+		if len(matches) > 0 {
+			pm := PathMatch{Path: path, Keys: matches}
+			if w.verifyFormat {
+				fv := verify.NewFormatVerifier()
+				vr := fv.Verify(path, data, 5*time.Second)
+				if vr.Status == verify.StatusFormatError {
+					pm.FormatIssues = vr.Details
+				}
+			}
+			result.Matches = append(result.Matches, pm)
+		}
+	}
+
+	result.MatchCount = len(result.Matches)
+	return result, nil
+}
+
 func (w *Walker) walkRecursive(mount, prefix string, depth int, jobs chan<- readJob, skipped *atomic.Int64, walkErr *error) {
 	if w.maxDepth > 0 && depth >= w.maxDepth {
 		return

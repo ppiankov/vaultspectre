@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -21,6 +22,7 @@ var (
 	lsTree   bool
 	lsCount  bool
 	lsFormat string
+	lsStdin  bool
 )
 
 // LsResult holds the output for --format json.
@@ -57,6 +59,7 @@ Exit Codes:
 
 func init() {
 	lsCmd.Flags().StringVar(&lsPath, "path", "kv", "Vault path to list")
+	lsCmd.Flags().BoolVar(&lsStdin, "stdin", false, "Read base paths from stdin (one per line)")
 	lsCmd.Flags().IntVar(&lsDepth, "depth", 0, "Max recursion depth (0 = unlimited)")
 	lsCmd.Flags().BoolVar(&lsTree, "tree", false, "Show indented tree hierarchy")
 	lsCmd.Flags().BoolVar(&lsCount, "count", false, "Show secret count per subtree")
@@ -125,7 +128,28 @@ func runLs(cmd *cobra.Command, args []string) error {
 		DryRun:   true,
 	})
 
-	result, err := walker.Walk(lsPath)
+	var result *grep.GrepResult
+	if lsStdin {
+		basePaths, scanErr := readLsStdinPaths()
+		if scanErr != nil {
+			return scanErr
+		}
+		// Walk each base path and merge results
+		merged := &grep.GrepResult{}
+		for _, bp := range basePaths {
+			r, walkErr := walker.Walk(bp)
+			if walkErr != nil {
+				continue
+			}
+			merged.Matches = append(merged.Matches, r.Matches...)
+			merged.TotalScanned += r.TotalScanned
+			merged.TotalSkipped += r.TotalSkipped
+		}
+		merged.MatchCount = len(merged.Matches)
+		result = merged
+	} else {
+		result, err = walker.Walk(lsPath)
+	}
 	if err != nil {
 		return newExitError(ExitNetwork, "vault list failed: %v", err)
 	}
@@ -187,6 +211,21 @@ func printTree(paths []string, base string) {
 		}
 		fmt.Printf("%s%s\n", indent, name)
 	}
+}
+
+func readLsStdinPaths() ([]string, error) {
+	var paths []string
+	s := bufio.NewScanner(os.Stdin)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line != "" {
+			paths = append(paths, line)
+		}
+	}
+	if err := s.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read stdin: %w", err)
+	}
+	return paths, nil
 }
 
 func printCount(paths []string) {
