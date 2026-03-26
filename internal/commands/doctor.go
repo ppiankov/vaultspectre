@@ -28,10 +28,19 @@ type CheckResult struct {
 	Message string      `json:"message"`
 }
 
-// DoctorReport holds the full doctor output.
+// DoctorSource holds provenance information.
+type DoctorSource struct {
+	Repo string `json:"repo"`
+}
+
+// DoctorReport holds the full doctor output (ANCC doctor schema).
 type DoctorReport struct {
-	Checks []CheckResult `json:"checks"`
-	Ready  bool          `json:"ready"`
+	Status    string        `json:"status"` // healthy, degraded, unavailable
+	Version   string        `json:"version"`
+	Revision  string        `json:"revision"`
+	Source    DoctorSource  `json:"source"`
+	Checks    []CheckResult `json:"checks"`
+	Readiness float64       `json:"readiness"` // 0.0 - 1.0
 }
 
 var doctorFormat string
@@ -101,9 +110,37 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Compute readiness (passed / total)
+	passed := 0
+	hasWarn := false
+	for _, ch := range checks {
+		switch ch.Status {
+		case CheckPass:
+			passed++
+		case CheckWarn:
+			hasWarn = true
+		}
+	}
+	readiness := 0.0
+	if len(checks) > 0 {
+		readiness = float64(passed) / float64(len(checks))
+	}
+
+	// Determine status: healthy / degraded / unavailable
+	status := "healthy"
+	if hasFail {
+		status = "unavailable"
+	} else if hasWarn {
+		status = "degraded"
+	}
+
 	report := DoctorReport{
-		Checks: checks,
-		Ready:  !hasFail,
+		Status:    status,
+		Version:   Version,
+		Revision:  Commit,
+		Source:    DoctorSource{Repo: "https://github.com/ppiankov/vaultspectre"},
+		Checks:    checks,
+		Readiness: readiness,
 	}
 
 	if doctorFormat == "json" {
@@ -126,11 +163,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		fmt.Printf("  %s %s: %s\n", icon, ch.Name, ch.Message)
 	}
 	fmt.Println()
-	if report.Ready {
-		fmt.Println("vaultspectre is ready.")
-	} else {
-		fmt.Println("vaultspectre is not ready. Fix the issues above.")
-	}
+	fmt.Printf("Status: %s (readiness: %.0f%%)\n", report.Status, report.Readiness*100)
 
 	if hasFail {
 		return newExitError(ExitError, "doctor checks failed")
