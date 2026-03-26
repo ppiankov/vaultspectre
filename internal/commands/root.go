@@ -30,4 +30,5 @@ func init() {
 	rootCmd.AddCommand(correlateCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(whoCmd)
+	rootCmd.AddCommand(countCmd)
 }
