@@ -1,0 +1,38 @@
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: secret-a
+  namespace: default
+spec:
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  data:
+    - secretKey: KEY_A
+      remoteRef:
+        key: secret/app/a
+        property: value
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: should-be-skipped
+data:
+  key: ignored
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: secret-b
+  namespace: default
+spec:
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: k8s-secret-b
+  data:
+    - secretKey: KEY_B
+      remoteRef:
+        key: secret/app/b
+        property: value

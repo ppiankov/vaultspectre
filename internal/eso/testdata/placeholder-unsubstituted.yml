@@ -1,0 +1,21 @@
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: external-env-placeholder
+  namespace: docflow
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: env-placeholder-secrets
+  data:
+    - secretKey: APP_SECRET
+      remoteRef:
+        key: secret/docflow/<ENV>/app
+        property: secret
+    - secretKey: APP_DB_PASS
+      remoteRef:
+        key: secret/docflow/<ENV>/db
+        property: password
