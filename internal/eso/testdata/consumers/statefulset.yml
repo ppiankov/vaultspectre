@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: docflow-worker
+  namespace: docflow
+spec:
+  template:
+    metadata:
+      labels:
+        app: docflow-worker
+    spec:
+      initContainers:
+        - name: krb5-init
+          image: krb5-init:latest
+          env:
+            - name: KRB5_REALM
+              valueFrom:
+                secretKeyRef:
+                  name: krb5-secrets
+                  key: realm
+          envFrom:
+            - secretRef:
+                name: krb5-all-secrets
+      containers:
+        - name: worker
+          image: docflow-worker:latest
+          env:
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-secrets
+                  key: KAFKA_PASSWORD
+            - name: KAFKA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-secrets
+                  key: KAFKA_USERNAME
+          envFrom:
+            - secretRef:
+                name: worker-secrets

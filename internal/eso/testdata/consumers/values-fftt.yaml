@@ -1,0 +1,13 @@
+replicaCount: 1
+image:
+  repository: docflow-api
+  tag: "1.4.2-fftt"
+
+env:
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-postgres-secrets-fftt
+        key: DB_PASSWORD
+  - name: FEATURE_FLAG
+    value: "enabled"

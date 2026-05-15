@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docflow-api
+  namespace: docflow
+spec:
+  template:
+    metadata:
+      annotations:
+        secret.reloader.stakater.com/reload: "db-postgres-secrets,kafka-secrets"
+    spec:
+      volumes:
+        - name: keytab-volume
+          secret:
+            secretName: kerberos-keytab
+        - name: config-volume
+          configMap:
+            name: app-config
+      containers:
+        - name: api
+          image: docflow-api:latest
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-postgres-secrets
+                  key: DB_PASSWORD
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-postgres-secrets
+                  key: DB_USER
+            - name: PLAIN_VALUE
+              value: "not-a-secret"
+          envFrom:
+            - secretRef:
+                name: infra-secrets
+        - name: metrics-sidecar
+          image: prometheus-exporter:latest
+          env:
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: metrics-secrets
+                  key: token

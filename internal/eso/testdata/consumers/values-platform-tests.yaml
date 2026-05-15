@@ -1,0 +1,16 @@
+replicaCount: 1
+image:
+  repository: docflow-api
+  tag: "test"
+
+env:
+  - name: TEST_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: test-secrets
+        key: api_key
+  - name: TEMPLATE_VAR
+    valueFrom:
+      secretKeyRef:
+        name: "{{ .Values.secretName }}"
+        key: key

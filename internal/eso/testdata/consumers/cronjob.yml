@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: docflow-report-job
+  namespace: docflow
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            secret.reloader.stakater.com/reload: "report-secrets"
+        spec:
+          containers:
+            - name: report
+              image: docflow-report:latest
+              env:
+                - name: REPORT_DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: report-secrets
+                      key: db_password
+                - name: SMTP_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: smtp-secrets
+                      key: password

@@ -1,0 +1,23 @@
+replicaCount: 2
+image:
+  repository: docflow-api
+  tag: "1.4.2"
+
+env:
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-postgres-secrets
+        key: DB_PASSWORD
+  - name: DB_USER
+    valueFrom:
+      secretKeyRef:
+        name: db-postgres-secrets
+        key: DB_USER
+  - name: APP_ENV
+    value: "production"
+  - name: KAFKA_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: kafka-secrets
+        key: KAFKA_PASSWORD
