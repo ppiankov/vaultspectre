@@ -267,6 +267,45 @@ func extractProperties(secret *vaultapi.Secret) map[string]interface{} {
 	return secret.Data
 }
 
+// ListProperties returns the property names present at path (handles KV v1 and v2).
+// Returns nil, nil when the path does not exist or is permission-denied (not an error).
+func (v *Validator) ListProperties(path string) ([]string, error) {
+	secret, err := v.client.Read(path)
+	if err != nil {
+		if isPermissionError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if secret == nil || secret.Data == nil || len(secret.Data) == 0 {
+		kvv2Path := convertToKVv2Path(path)
+		if kvv2Path == path {
+			return nil, nil
+		}
+		secret, err = v.client.Read(kvv2Path)
+		if err != nil {
+			if isPermissionError(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		if secret == nil || secret.Data == nil {
+			return nil, nil
+		}
+	}
+
+	props := extractProperties(secret)
+	if props == nil {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	return keys, nil
+}
+
 func isPermissionError(err error) bool {
 	if err == nil {
 		return false
