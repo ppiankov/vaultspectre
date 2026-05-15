@@ -1,11 +1,24 @@
 package vault
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
+	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/ppiankov/vaultspectre/internal/audit"
+)
+
+// PropertyStatus is the result of a path+property validation check.
+type PropertyStatus string
+
+const (
+	PropertyOK           PropertyStatus = "OK"
+	PropertyPathMissing  PropertyStatus = "PATH_MISSING"
+	PropertyMissing      PropertyStatus = "PROPERTY_MISSING"
+	PropertyAccessDenied PropertyStatus = "ACCESS_DENIED"
+	PropertyNetworkError PropertyStatus = "NETWORK_ERROR"
 )
 
 // Validator validates Vault secret paths
@@ -184,4 +197,80 @@ func parseKVv2Path(fullPath string) (string, string) {
 	}
 
 	return "", ""
+}
+
+// ValidatePathProperty checks whether a specific property exists within a Vault path.
+// Handles both KV v1 (property in secret.Data) and KV v2 (property under secret.Data["data"]).
+// Returns PropertyNetworkError if ctx is already cancelled before making any request.
+func (v *Validator) ValidatePathProperty(ctx context.Context, path, property string) PropertyStatus {
+	if ctx.Err() != nil {
+		return PropertyNetworkError
+	}
+
+	secret, err := v.client.Read(path)
+	if err != nil {
+		if isPermissionError(err) {
+			return PropertyAccessDenied
+		}
+		return PropertyNetworkError
+	}
+
+	if secret != nil && secret.Data != nil && len(secret.Data) > 0 {
+		return checkProperty(secret, property)
+	}
+
+	// Path returned no data — try KV v2 path format
+	kvv2Path := convertToKVv2Path(path)
+	if kvv2Path == path {
+		return PropertyPathMissing
+	}
+
+	if ctx.Err() != nil {
+		return PropertyNetworkError
+	}
+
+	secret, err = v.client.Read(kvv2Path)
+	if err != nil {
+		if isPermissionError(err) {
+			return PropertyAccessDenied
+		}
+		return PropertyNetworkError
+	}
+
+	if secret == nil || secret.Data == nil || len(secret.Data) == 0 {
+		return PropertyPathMissing
+	}
+	return checkProperty(secret, property)
+}
+
+// checkProperty returns OK if property exists in the secret, PROPERTY_MISSING otherwise.
+func checkProperty(secret *vaultapi.Secret, property string) PropertyStatus {
+	props := extractProperties(secret)
+	if props == nil {
+		return PropertyPathMissing
+	}
+	if _, ok := props[property]; ok {
+		return PropertyOK
+	}
+	return PropertyMissing
+}
+
+// extractProperties returns the property map from a Vault secret response.
+// KV v2 nests properties under data.data; KV v1 exposes them directly in data.
+func extractProperties(secret *vaultapi.Secret) map[string]interface{} {
+	if secret == nil || secret.Data == nil {
+		return nil
+	}
+	if nested, ok := secret.Data["data"].(map[string]interface{}); ok {
+		return nested
+	}
+	return secret.Data
+}
+
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "permission denied") || strings.Contains(msg, "403")
 }

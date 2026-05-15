@@ -1,6 +1,15 @@
 package vault
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	vaultapi "github.com/hashicorp/vault/api"
+)
 
 func TestConvertToKVv2Path(t *testing.T) {
 	tests := []struct {
@@ -163,5 +172,228 @@ func TestParseKVv2Path(t *testing.T) {
 				t.Errorf("parseKVv2Path(%q) secret = %q, want %q", tt.fullPath, gotSecret, tt.wantSecret)
 			}
 		})
+	}
+}
+
+// --- ValidatePathProperty tests ---
+
+// newTestValidator creates a Validator backed by a mock HTTP server.
+// The handlers map is keyed by URL path (e.g. "/v1/secret/data/prod/app").
+func newTestValidator(t *testing.T, handlers map[string]http.HandlerFunc) (*Validator, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h, ok := handlers[r.URL.Path]; ok {
+			h(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"errors": []string{}})
+	}))
+
+	cfg := vaultapi.DefaultConfig()
+	cfg.Address = srv.URL
+	raw, err := vaultapi.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("create vault client: %v", err)
+	}
+	raw.SetToken("test-token")
+
+	c := &Client{
+		client:  raw,
+		timeout: 5 * time.Second,
+	}
+	return NewValidator(c), srv
+}
+
+func writeVaultKVv2(w http.ResponseWriter, props map[string]interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": map[string]interface{}{
+			"data":     props,
+			"metadata": map[string]interface{}{"version": 1},
+		},
+	})
+}
+
+func writeVaultKVv1(w http.ResponseWriter, props map[string]interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":           props,
+		"lease_duration": 2764800,
+		"renewable":      false,
+	})
+}
+
+func writeVaultPermissionDenied(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"errors": []string{"permission denied"},
+	})
+}
+
+func TestValidatePathProperty_OKKVv2(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/data/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv2(w, map[string]interface{}{"password": "s3cr3t", "username": "admin"})
+		},
+	})
+	defer srv.Close()
+
+	status := v.ValidatePathProperty(context.Background(), "secret/prod/app", "password")
+	if status != PropertyOK {
+		t.Errorf("got %q, want %q", status, PropertyOK)
+	}
+}
+
+func TestValidatePathProperty_OKKVv1(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv1(w, map[string]interface{}{"password": "s3cr3t", "username": "admin"})
+		},
+	})
+	defer srv.Close()
+
+	status := v.ValidatePathProperty(context.Background(), "secret/prod/app", "password")
+	if status != PropertyOK {
+		t.Errorf("got %q, want %q", status, PropertyOK)
+	}
+}
+
+func TestValidatePathProperty_PropertyMissingKVv2(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/data/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv2(w, map[string]interface{}{"username": "admin"})
+		},
+	})
+	defer srv.Close()
+
+	status := v.ValidatePathProperty(context.Background(), "secret/prod/app", "password")
+	if status != PropertyMissing {
+		t.Errorf("got %q, want %q", status, PropertyMissing)
+	}
+}
+
+func TestValidatePathProperty_PropertyMissingKVv1(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv1(w, map[string]interface{}{"username": "admin"})
+		},
+	})
+	defer srv.Close()
+
+	status := v.ValidatePathProperty(context.Background(), "secret/prod/app", "password")
+	if status != PropertyMissing {
+		t.Errorf("got %q, want %q", status, PropertyMissing)
+	}
+}
+
+func TestValidatePathProperty_PathMissing(t *testing.T) {
+	v, srv := newTestValidator(t, nil)
+	defer srv.Close()
+
+	status := v.ValidatePathProperty(context.Background(), "secret/prod/missing", "password")
+	if status != PropertyPathMissing {
+		t.Errorf("got %q, want %q", status, PropertyPathMissing)
+	}
+}
+
+func TestValidatePathProperty_AccessDenied(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultPermissionDenied(w)
+		},
+	})
+	defer srv.Close()
+
+	status := v.ValidatePathProperty(context.Background(), "secret/prod/app", "password")
+	if status != PropertyAccessDenied {
+		t.Errorf("got %q, want %q", status, PropertyAccessDenied)
+	}
+}
+
+func TestValidatePathProperty_ContextCancelled(t *testing.T) {
+	v, srv := newTestValidator(t, nil)
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	status := v.ValidatePathProperty(ctx, "secret/prod/app", "password")
+	if status != PropertyNetworkError {
+		t.Errorf("got %q, want %q", status, PropertyNetworkError)
+	}
+}
+
+func TestValidatePathProperty_PropertyMissingDistinctFromPathMissing(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/data/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv2(w, map[string]interface{}{"username": "admin"})
+		},
+	})
+	defer srv.Close()
+
+	presentStatus := v.ValidatePathProperty(context.Background(), "secret/prod/app", "username")
+	missingPropStatus := v.ValidatePathProperty(context.Background(), "secret/prod/app", "password")
+	missingPathStatus := v.ValidatePathProperty(context.Background(), "secret/prod/nonexistent", "password")
+
+	if presentStatus != PropertyOK {
+		t.Errorf("present property: got %q, want %q", presentStatus, PropertyOK)
+	}
+	if missingPropStatus != PropertyMissing {
+		t.Errorf("missing property: got %q, want %q", missingPropStatus, PropertyMissing)
+	}
+	if missingPathStatus != PropertyPathMissing {
+		t.Errorf("missing path: got %q, want %q", missingPathStatus, PropertyPathMissing)
+	}
+	if missingPropStatus == missingPathStatus {
+		t.Error("PROPERTY_MISSING and PATH_MISSING must be distinct status values")
+	}
+}
+
+func TestExtractProperties_KVv2(t *testing.T) {
+	secret := &vaultapi.Secret{
+		Data: map[string]interface{}{
+			"data": map[string]interface{}{
+				"password": "s3cr3t",
+			},
+			"metadata": map[string]interface{}{"version": 1},
+		},
+	}
+	props := extractProperties(secret)
+	if props == nil {
+		t.Fatal("expected non-nil properties")
+	}
+	if _, ok := props["password"]; !ok {
+		t.Error("expected 'password' in KV v2 properties")
+	}
+	if _, ok := props["metadata"]; ok {
+		t.Error("metadata should not be in extracted properties")
+	}
+}
+
+func TestExtractProperties_KVv1(t *testing.T) {
+	secret := &vaultapi.Secret{
+		Data: map[string]interface{}{
+			"password": "s3cr3t",
+			"username": "admin",
+		},
+	}
+	props := extractProperties(secret)
+	if props == nil {
+		t.Fatal("expected non-nil properties")
+	}
+	if _, ok := props["password"]; !ok {
+		t.Error("expected 'password' in KV v1 properties")
+	}
+}
+
+func TestExtractProperties_Nil(t *testing.T) {
+	if extractProperties(nil) != nil {
+		t.Error("expected nil for nil secret")
+	}
+	if extractProperties(&vaultapi.Secret{}) != nil {
+		t.Error("expected nil for secret with nil Data")
 	}
 }
