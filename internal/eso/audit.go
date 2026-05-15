@@ -3,7 +3,9 @@ package eso
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/ppiankov/vaultspectre/internal/vault"
 )
@@ -28,6 +30,11 @@ const (
 	ESOTargetNameMissing           FindingClass = "ESO_TARGET_NAME_MISSING"
 	ESODuplicateKey                FindingClass = "ESO_DUPLICATE_KEY"
 	ESOEnvPlaceholderUnsubstituted FindingClass = "ESO_ENV_PLACEHOLDER_UNSUBSTITUTED"
+
+	// Finding classes — 3 additional from docflow audit (WO-66)
+	ESOReloaderTargetMissing     FindingClass = "ESO_RELOADER_TARGET_MISSING"
+	ESORefreshIntervalAggressive FindingClass = "ESO_REFRESH_INTERVAL_AGGRESSIVE"
+	ESOVaultDuplicateSource      FindingClass = "ESO_VAULT_DUPLICATE_SOURCE"
 )
 
 // SourceLocation identifies the file and line where a misconfiguration was declared.
@@ -80,6 +87,30 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 				Source:      SourceLocation{File: es.SourceFile},
 				Remediation: fmt.Sprintf("Set spec.target.name explicitly in ExternalSecret %q to avoid relying on the default", es.Name),
 			})
+		}
+	}
+
+	// --- ESO_REFRESH_INTERVAL_AGGRESSIVE ---
+	if in.MaxRefreshIntervalSeconds > 0 {
+		threshold := time.Duration(in.MaxRefreshIntervalSeconds) * time.Second
+		for _, es := range in.ExternalSecrets {
+			if es.RefreshInterval == "" {
+				continue
+			}
+			d, err := time.ParseDuration(es.RefreshInterval)
+			if err != nil {
+				continue
+			}
+			if d > 0 && d < threshold {
+				findings = append(findings, Finding{
+					Class:       ESORefreshIntervalAggressive,
+					Severity:    SeverityWarning,
+					Message:     fmt.Sprintf("ExternalSecret %q has refreshInterval %q (%v) which is below threshold of %v", es.Name, es.RefreshInterval, d, threshold),
+					SecretName:  es.TargetName,
+					Source:      SourceLocation{File: es.SourceFile},
+					Remediation: fmt.Sprintf("Set refreshInterval to at least %v in ExternalSecret %q to reduce Vault API load", threshold, es.Name),
+				})
+			}
 		}
 	}
 
@@ -154,6 +185,48 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 		}
 	}
 
+	// --- ESO_VAULT_DUPLICATE_SOURCE ---
+	// Detect the same (Vault path, property) pulled into multiple distinct K8s target Secrets.
+	type vaultSource struct{ path, property string }
+	dupSourceTargets := make(map[vaultSource]map[string]bool) // source → set of target Secret names
+	dupSourceESNames := make(map[vaultSource][]string)        // source → ES names in encounter order
+
+	for _, es := range in.ExternalSecrets {
+		effective := effectiveTargetFor[es.Name]
+		for _, d := range es.Data {
+			if strings.Contains(d.RemoteRefKey, placeholder) {
+				continue
+			}
+			src := vaultSource{d.RemoteRefKey, d.RemoteRefProperty}
+			if dupSourceTargets[src] == nil {
+				dupSourceTargets[src] = make(map[string]bool)
+			}
+			if !dupSourceTargets[src][effective] {
+				dupSourceTargets[src][effective] = true
+				dupSourceESNames[src] = append(dupSourceESNames[src], es.Name)
+			}
+		}
+	}
+	for src, targets := range dupSourceTargets {
+		if len(targets) <= 1 {
+			continue
+		}
+		esNames := dupSourceESNames[src]
+		sort.Strings(esNames)
+		propDesc := src.property
+		if propDesc == "" {
+			propDesc = "(all)"
+		}
+		findings = append(findings, Finding{
+			Class:       ESOVaultDuplicateSource,
+			Severity:    SeverityWarning,
+			Message:     fmt.Sprintf("Vault source %q property %q is pulled into %d K8s Secrets by: %s", src.path, propDesc, len(targets), strings.Join(esNames, ", ")),
+			Path:        src.path,
+			Property:    src.property,
+			Remediation: fmt.Sprintf("Consolidate the %d ExternalSecrets pulling Vault path %q into a single source of truth", len(targets), src.path),
+		})
+	}
+
 	// --- Vault-dependent checks ---
 	if in.Validator != nil {
 		vf, err := runVaultChecks(ctx, in, placeholder)
@@ -166,6 +239,24 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 	// --- K8s consumer cross-checks ---
 	if in.Consumers != nil {
 		findings = append(findings, runK8sChecks(in, effectiveTargetFor)...)
+
+		// --- ESO_RELOADER_TARGET_MISSING ---
+		producedTargets := make(map[string]bool)
+		for _, es := range in.ExternalSecrets {
+			producedTargets[effectiveTargetFor[es.Name]] = true
+		}
+		for _, ref := range in.Consumers.ReloaderReferences {
+			if !producedTargets[ref.SecretName] {
+				findings = append(findings, Finding{
+					Class:       ESOReloaderTargetMissing,
+					Severity:    SeverityWarning,
+					Message:     fmt.Sprintf("Reloader annotation references K8s Secret %q but no ExternalSecret produces that target", ref.SecretName),
+					SecretName:  ref.SecretName,
+					Source:      SourceLocation{File: ref.SourceFile, Line: ref.SourceLine},
+					Remediation: fmt.Sprintf("Remove %q from the reloader annotation or add an ExternalSecret that targets it", ref.SecretName),
+				})
+			}
+		}
 	}
 
 	return findings, nil

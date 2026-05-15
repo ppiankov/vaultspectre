@@ -533,6 +533,170 @@ func TestAudit_SeverityMapping(t *testing.T) {
 	}
 }
 
+func TestAudit_RefreshIntervalAggressive(t *testing.T) {
+	es := &ExternalSecret{
+		Name: "my-es", Namespace: "default", TargetName: "my-secret",
+		RefreshInterval: "1m", // 60s, below 5-minute threshold
+		SourceFile:      "test.yml",
+	}
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets:           []*ExternalSecret{es},
+		MaxRefreshIntervalSeconds: 300, // 5m threshold
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if !hasFinding(findings, ESORefreshIntervalAggressive) {
+		t.Error("expected ESO_REFRESH_INTERVAL_AGGRESSIVE for 1m interval below 5m threshold")
+	}
+	f := findingByClass(findings, ESORefreshIntervalAggressive)
+	if f.Severity != SeverityWarning {
+		t.Errorf("severity: got %q, want warning", f.Severity)
+	}
+}
+
+func TestAudit_RefreshIntervalAggressive_AboveThreshold(t *testing.T) {
+	es := &ExternalSecret{
+		Name: "my-es", TargetName: "my-secret",
+		RefreshInterval: "10m",
+		SourceFile:      "test.yml",
+	}
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets:           []*ExternalSecret{es},
+		MaxRefreshIntervalSeconds: 300, // 5m threshold
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if hasFinding(findings, ESORefreshIntervalAggressive) {
+		t.Error("10m interval should not trigger aggressive finding against 5m threshold")
+	}
+}
+
+func TestAudit_RefreshIntervalAggressive_Disabled(t *testing.T) {
+	es := &ExternalSecret{
+		Name: "my-es", TargetName: "my-secret",
+		RefreshInterval: "30s",
+		SourceFile:      "test.yml",
+	}
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets:           []*ExternalSecret{es},
+		MaxRefreshIntervalSeconds: 0, // disabled
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if hasFinding(findings, ESORefreshIntervalAggressive) {
+		t.Error("check should be disabled when MaxRefreshIntervalSeconds is 0")
+	}
+}
+
+func TestAudit_VaultDuplicateSource(t *testing.T) {
+	// Two ExternalSecrets pull the same (Vault path, property) into different K8s Secrets.
+	es1 := singleES("es-app1", "secret-app1", "secret/shared/db", "password", "DB_PASS")
+	es2 := singleES("es-app2", "secret-app2", "secret/shared/db", "password", "DB_PASS")
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets: []*ExternalSecret{es1, es2},
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if !hasFinding(findings, ESOVaultDuplicateSource) {
+		t.Error("expected ESO_VAULT_DUPLICATE_SOURCE when same Vault source fans out to different K8s Secrets")
+	}
+	f := findingByClass(findings, ESOVaultDuplicateSource)
+	if f.Path != "secret/shared/db" {
+		t.Errorf("finding path: got %q, want %q", f.Path, "secret/shared/db")
+	}
+	if f.Severity != SeverityWarning {
+		t.Errorf("severity: got %q, want warning", f.Severity)
+	}
+}
+
+func TestAudit_VaultDuplicateSource_SameTarget_NoFinding(t *testing.T) {
+	// Two ExternalSecrets pull the same source into the SAME K8s Secret — covered by DUPLICATE_KEY, not here.
+	es1 := singleES("es1", "shared-secret", "secret/shared/db", "password", "DB_PASS")
+	es2 := singleES("es2", "shared-secret", "secret/shared/db", "password", "DB_PASS")
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets: []*ExternalSecret{es1, es2},
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if hasFinding(findings, ESOVaultDuplicateSource) {
+		t.Error("same target Secret should not trigger ESO_VAULT_DUPLICATE_SOURCE")
+	}
+}
+
+func TestAudit_VaultDuplicateSource_PlaceholderSkipped(t *testing.T) {
+	// Paths with placeholders should not count as duplicate sources.
+	es1 := singleES("es1", "secret-a", "secret/docflow/<ENV>/db", "password", "DB_PASS")
+	es2 := singleES("es2", "secret-b", "secret/docflow/<ENV>/db", "password", "DB_PASS")
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets: []*ExternalSecret{es1, es2},
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if hasFinding(findings, ESOVaultDuplicateSource) {
+		t.Error("placeholder paths should be skipped in duplicate source check")
+	}
+}
+
+func TestAudit_ReloaderTargetMissing(t *testing.T) {
+	es := singleES("my-es", "my-secret", "secret/prod/db", "password", "DB_PASS")
+	consumers := &ConsumerScanResult{
+		Consumers: []ConsumedKey{
+			{SecretName: "my-secret", Key: "DB_PASS", ConsumerKind: "env", SourceFile: "deploy.yml", SourceLine: 5},
+		},
+		ReloaderReferences: []ReloaderReference{
+			{SecretName: "ghost-secret", SourceFile: "deploy.yml", SourceLine: 3},
+		},
+	}
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets: []*ExternalSecret{es},
+		Consumers:       consumers,
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if !hasFinding(findings, ESOReloaderTargetMissing) {
+		t.Error("expected ESO_RELOADER_TARGET_MISSING for ghost-secret not produced by any ExternalSecret")
+	}
+	f := findingByClass(findings, ESOReloaderTargetMissing)
+	if f.SecretName != "ghost-secret" {
+		t.Errorf("finding SecretName: got %q, want %q", f.SecretName, "ghost-secret")
+	}
+	if f.Severity != SeverityWarning {
+		t.Errorf("severity: got %q, want warning", f.Severity)
+	}
+	if f.Source.Line != 3 {
+		t.Errorf("source line: got %d, want 3", f.Source.Line)
+	}
+}
+
+func TestAudit_ReloaderTargetMissing_ValidTarget_NoFinding(t *testing.T) {
+	es := singleES("my-es", "my-secret", "secret/prod/db", "password", "DB_PASS")
+	consumers := &ConsumerScanResult{
+		Consumers: []ConsumedKey{
+			{SecretName: "my-secret", Key: "DB_PASS", ConsumerKind: "env", SourceFile: "deploy.yml", SourceLine: 5},
+		},
+		ReloaderReferences: []ReloaderReference{
+			{SecretName: "my-secret", SourceFile: "deploy.yml", SourceLine: 3}, // valid — matches ExternalSecret target
+		},
+	}
+	findings, err := Audit(context.Background(), AuditInput{
+		ExternalSecrets: []*ExternalSecret{es},
+		Consumers:       consumers,
+	})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if hasFinding(findings, ESOReloaderTargetMissing) {
+		t.Error("valid reloader target should not trigger ESO_RELOADER_TARGET_MISSING")
+	}
+}
+
 // findingByClass returns the first finding with the given class, or a zero value.
 func findingByClass(findings []Finding, class FindingClass) Finding {
 	for _, f := range findings {

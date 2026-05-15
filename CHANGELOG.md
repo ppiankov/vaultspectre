@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `eso` command: audit ExternalSecret CRD manifests against live Vault state and K8s/Helm consumers
-- 8 ESO finding classes: `ESO_VAULT_PATH_MISSING`, `ESO_VAULT_PROPERTY_MISSING`, `ESO_VAULT_ORPHANED_PROPERTY`, `ESO_K8S_KEY_UNUSED`, `ESO_K8S_KEY_MISSING`, `ESO_TARGET_NAME_MISSING`, `ESO_DUPLICATE_KEY`, `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED`
+- 11 ESO finding classes: `ESO_VAULT_PATH_MISSING`, `ESO_VAULT_PROPERTY_MISSING`, `ESO_VAULT_ORPHANED_PROPERTY`, `ESO_K8S_KEY_UNUSED`, `ESO_K8S_KEY_MISSING`, `ESO_TARGET_NAME_MISSING`, `ESO_DUPLICATE_KEY`, `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED`, `ESO_RELOADER_TARGET_MISSING`, `ESO_REFRESH_INTERVAL_AGGRESSIVE`, `ESO_VAULT_DUPLICATE_SOURCE`
 - `--eso-dir`, `--helm-values`, `--manifests`, `--env`, `--vault-list-mount`, `--fail-on-findings` flags
 - `--env` substitutes `<ENV>` placeholder in Vault paths before live lookup
 - `--vault-list-mount` enables orphaned Vault property detection
