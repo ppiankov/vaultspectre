@@ -272,6 +272,7 @@ Start an MCP (Model Context Protocol) server over stdio. Exposes vaultspectre ca
 - `vaultspectre_grep` — search secrets by key/value pattern (values always redacted)
 - `vaultspectre_count` — count secrets in a tree
 - `vaultspectre_doctor` — check connectivity and config
+- `vaultspectre_eso` — audit ExternalSecret manifests (args: eso_dir, vault_addr, token, format, env, helm_values[], manifests[]); returns findings with class/severity/source/remediation fields; rule IDs in vaultspectre/ESO_* namespace; exit 6 on error findings when fail_on_findings=true
 
 **Flags:**
 - `--vault-addr` — Vault server address

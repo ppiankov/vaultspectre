@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ppiankov/vaultspectre/internal/config"
+	"github.com/ppiankov/vaultspectre/internal/eso"
 	"github.com/ppiankov/vaultspectre/internal/redact"
 	"github.com/ppiankov/vaultspectre/internal/vault"
 	"github.com/spf13/cobra"
@@ -44,6 +45,7 @@ type DoctorReport struct {
 }
 
 var doctorFormat string
+var doctorEsoDir string
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
@@ -66,6 +68,7 @@ Exit Codes:
 
 func init() {
 	doctorCmd.Flags().StringVar(&doctorFormat, "format", "", "output format (json)")
+	doctorCmd.Flags().StringVar(&doctorEsoDir, "eso-dir", "", "ESO manifest directory to validate presence and parseability")
 	doctorCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	doctorCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	doctorCmd.Flags().StringVar(&vaultNamespace, "namespace", os.Getenv("VAULT_NAMESPACE"), "Vault namespace (Enterprise)")
@@ -78,6 +81,15 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 
 	// Check 1: Config file
 	checks = append(checks, checkConfig())
+
+	// Check 1b: ESO dir (optional, only when --eso-dir provided)
+	if doctorEsoDir != "" {
+		c := checkEsoDir(doctorEsoDir)
+		checks = append(checks, c)
+		if c.Status == CheckFail {
+			hasFail = true
+		}
+	}
 
 	// Check 2: Vault address
 	c := checkVaultAddr()
@@ -253,4 +265,15 @@ func checkTokenPermissions() CheckResult {
 	}
 
 	return CheckResult{Name: "token_permissions", Status: CheckPass, Message: fmt.Sprintf("policies: %v", policies)}
+}
+
+func checkEsoDir(dir string) CheckResult {
+	secrets, err := eso.ParseDirectory(dir)
+	if err != nil {
+		return CheckResult{Name: "eso_dir", Status: CheckFail, Message: fmt.Sprintf("parse error: %v", err)}
+	}
+	if len(secrets) == 0 {
+		return CheckResult{Name: "eso_dir", Status: CheckWarn, Message: fmt.Sprintf("%s exists but contains no ExternalSecret manifests", dir)}
+	}
+	return CheckResult{Name: "eso_dir", Status: CheckPass, Message: fmt.Sprintf("%s: %d ExternalSecret(s) parsed", dir, len(secrets))}
 }

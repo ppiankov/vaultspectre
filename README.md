@@ -60,6 +60,7 @@ vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 | `vaultspectre watch` | Continuous drift detection with delta reporting |
 | `vaultspectre correlate` | Cross-tool CH user to Vault secret mapping |
 | `vaultspectre init` | Generate starter config and policy files (--with-policy) |
+| `vaultspectre eso` | Audit ExternalSecret manifests against Vault and K8s consumers (ESO_* rules) |
 | `vaultspectre doctor` | Check config, connectivity, and readiness (ANCC schema) |
 | `vaultspectre ci-init` | Generate CI pipeline snippet (GitLab/GitHub) |
 | `vaultspectre serve` | MCP server for AI agent integration (stdio) |

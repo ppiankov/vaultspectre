@@ -33,4 +33,5 @@ func init() {
 	rootCmd.AddCommand(countCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(esoCmd)
 }

@@ -5,6 +5,20 @@ All notable changes to VaultSpectre will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-16
+
+### Added
+- `eso` command: audit ExternalSecret CRD manifests against live Vault state and K8s/Helm consumers
+- 8 ESO finding classes: `ESO_VAULT_PATH_MISSING`, `ESO_VAULT_PROPERTY_MISSING`, `ESO_VAULT_ORPHANED_PROPERTY`, `ESO_K8S_KEY_UNUSED`, `ESO_K8S_KEY_MISSING`, `ESO_TARGET_NAME_MISSING`, `ESO_DUPLICATE_KEY`, `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED`
+- `--eso-dir`, `--helm-values`, `--manifests`, `--env`, `--vault-list-mount`, `--fail-on-findings` flags
+- `--env` substitutes `<ENV>` placeholder in Vault paths before live lookup
+- `--vault-list-mount` enables orphaned Vault property detection
+- ESO-specific SARIF rules in `vaultspectre/ESO_*` namespace
+- `doctor --eso-dir` validates ESO manifest directory presence and parseability
+- `serve` MCP surface: `vaultspectre_eso` tool for AI agent ESO audits
+- `internal/eso` package: parser, consumer scanner, and diff engine (pure Go, no k8s client-go dependency)
+- Property-level Vault validation (`ValidatePathProperty`) distinguishing PATH_MISSING from PROPERTY_MISSING
+
 ## [0.5.1] - 2026-03-26
 
 ### Added
