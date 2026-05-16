@@ -68,6 +68,30 @@ vaultspectre watch --interval 5m --repo . --slack-webhook $SLACK_URL
 
 Key flags: `--format json\|sarif\|spectrehub`, `--exclude`, `--fail-on-missing`, `--policy`, `--auth-method`, `--stdin`, `--from-file`, `--baseline`, `--slack-webhook`
 
+## ESO audit
+
+Cross-reference ExternalSecret manifests against live Vault and K8s consumers to detect misconfigurations before they cause pod crashes.
+
+```sh
+vaultspectre eso --eso-dir ./manifests --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
+```
+
+**Rule catalog (`ESO_*` namespace):**
+
+| Rule ID | Severity | Fires when |
+|---------|----------|------------|
+| `ESO_VAULT_PATH_MISSING` | error | ExternalSecret references a Vault path that does not exist |
+| `ESO_VAULT_PROPERTY_MISSING` | error | Vault path exists but the referenced property is absent |
+| `ESO_VAULT_ORPHANED_PROPERTY` | info | Vault property exists but no ExternalSecret pulls it |
+| `ESO_K8S_KEY_UNUSED` | info | ExternalSecret produces a Secret key no consumer references |
+| `ESO_K8S_KEY_MISSING` | error | Consumer references a Secret key no ExternalSecret produces |
+| `ESO_TARGET_NAME_MISSING` | warning | ExternalSecret has no `target.name` |
+| `ESO_DUPLICATE_KEY` | warning | Same `secretKey` produced by multiple ExternalSecrets into different targets |
+| `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED` | error | Literal `<ENV>` remains in `remoteRef.key` (use `--env` to substitute) |
+| `ESO_RELOADER_TARGET_MISSING` | error | Stakater Reloader annotation references a Secret name no ExternalSecret produces |
+| `ESO_REFRESH_INTERVAL_AGGRESSIVE` | warning | `refreshInterval` is below threshold (configured in API via `MaxRefreshIntervalSeconds`) |
+| `ESO_VAULT_DUPLICATE_SOURCE` | warning | Same Vault path+property pulled into multiple K8s Secrets |
+
 ## Exit codes
 
 | Code | Meaning |

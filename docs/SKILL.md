@@ -263,6 +263,65 @@ Generate a ready-to-paste CI pipeline snippet.
 - 0: snippet printed
 - 2: invalid format
 
+### vaultspectre eso
+
+Audit ExternalSecret CRD manifests against live Vault state and K8s/Helm consumers. Emits findings in the `ESO_*` rule namespace.
+
+**Flags:**
+- `--eso-dir path` — directory containing ExternalSecret manifests (required)
+- `--helm-values path` — Helm values files to scan for consumers (repeatable)
+- `--manifests path` — K8s manifest paths or directories for consumer scan (repeatable)
+- `--env VALUE` — substitute `<ENV>` placeholder in Vault `remoteRef.key` paths
+- `--vault-list-mount mount` — Vault mount to list for orphaned property detection (e.g. `secret`)
+- `--vault-addr` — Vault server address
+- `--token` — Vault authentication token
+- `--auth-method token|approle|kubernetes` — auth method
+- `--format text|json|sarif|spectrehub` — output format (default `text`)
+- `--fail-on-findings` — exit 6 if any error-severity finding is present
+- `--timeout N` — Vault API timeout in seconds (default 30)
+
+**Exit codes:**
+- 0: audit complete, no findings
+- 2: invalid arguments (missing `--eso-dir`, malformed manifests)
+- 5: Vault unreachable
+- 6: error-severity findings detected (when `--fail-on-findings`)
+
+**Rule catalog:**
+
+| Rule ID | Severity | Fires when |
+|---------|----------|------------|
+| `ESO_VAULT_PATH_MISSING` | error | ExternalSecret references a Vault path that does not exist |
+| `ESO_VAULT_PROPERTY_MISSING` | error | Vault path exists but the referenced property is absent |
+| `ESO_VAULT_ORPHANED_PROPERTY` | info | Vault property exists but no ExternalSecret pulls it (requires `--vault-list-mount`) |
+| `ESO_K8S_KEY_UNUSED` | info | ExternalSecret produces a Secret key no consumer references (requires `--helm-values`/`--manifests`) |
+| `ESO_K8S_KEY_MISSING` | error | Consumer references a Secret key no ExternalSecret produces |
+| `ESO_TARGET_NAME_MISSING` | warning | ExternalSecret has no `target.name` |
+| `ESO_DUPLICATE_KEY` | warning | Same `secretKey` produced by multiple ExternalSecrets into different targets |
+| `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED` | error | Literal `<ENV>` remains in `remoteRef.key` |
+| `ESO_RELOADER_TARGET_MISSING` | error | Stakater Reloader annotation references a Secret name no ExternalSecret produces |
+| `ESO_REFRESH_INTERVAL_AGGRESSIVE` | warning | `refreshInterval` below threshold (configured via `MaxRefreshIntervalSeconds` in API) |
+| `ESO_VAULT_DUPLICATE_SOURCE` | warning | Same Vault path+property pulled into multiple K8s Secrets |
+
+Findings are ordered: errors first, then warnings, then info; within severity by source file + line.
+
+**JSON output:**
+```json
+{
+  "tool": "vaultspectre",
+  "version": "0.6.0",
+  "eso_dir": "./manifests",
+  "findings": [
+    {
+      "class": "ESO_VAULT_PATH_MISSING",
+      "severity": "error",
+      "message": "Vault path 'secret/docflow/<ENV>/db' does not exist",
+      "source": {"file": "manifests/db-secrets.yml", "line": 14},
+      "remediation": "Verify the path exists in Vault or substitute the correct environment value"
+    }
+  ]
+}
+```
+
 ### vaultspectre serve
 
 Start an MCP (Model Context Protocol) server over stdio. Exposes vaultspectre capabilities as typed tools for AI agents.
