@@ -189,6 +189,32 @@ vaultspectre init --with-policy
 vaultspectre init --force
 ```
 
+## `vaultspectre eso`
+
+Audit ExternalSecret CRD manifests against live Vault state and K8s/Helm consumers.
+
+```bash
+vaultspectre eso --eso-dir ./manifests --vault-addr $VAULT_ADDR --token $VAULT_TOKEN
+vaultspectre eso --eso-dir ./manifests --vault-addr $VAULT_ADDR --token $VAULT_TOKEN \
+  --helm-values ./helm/values-prod.yaml --manifests ./k8s/ --env prod
+vaultspectre eso --eso-dir ./manifests --vault-addr $VAULT_ADDR --token $VAULT_TOKEN \
+  --fail-on-findings --format json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--eso-dir` | Directory containing ExternalSecret manifests (required) |
+| `--helm-values` | Helm values files to scan for consumers (repeatable) |
+| `--manifests` | K8s manifest paths/dirs for consumer scan (repeatable) |
+| `--env VALUE` | Substitute `<ENV>` placeholder in Vault `remoteRef.key` paths |
+| `--vault-list-mount` | Vault mount for orphaned property detection (e.g. `secret`) |
+| `--fail-on-findings` | Exit 6 if any error-severity finding present |
+| `--format` | Output: `text`, `json`, `sarif`, `spectrehub` |
+| `--auth-method` | Auth: `token`, `approle`, `kubernetes` |
+| `--timeout` | Vault API timeout in seconds (default 30) |
+
+**Rule IDs (severity):** `ESO_VAULT_PATH_MISSING` (error), `ESO_VAULT_PROPERTY_MISSING` (error), `ESO_K8S_KEY_MISSING` (error), `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED` (error), `ESO_RELOADER_TARGET_MISSING` (error), `ESO_TARGET_NAME_MISSING` (warning), `ESO_DUPLICATE_KEY` (warning), `ESO_REFRESH_INTERVAL_AGGRESSIVE` (warning), `ESO_VAULT_DUPLICATE_SOURCE` (warning), `ESO_VAULT_ORPHANED_PROPERTY` (info), `ESO_K8S_KEY_UNUSED` (info)
+
 ## `vaultspectre doctor`
 
 Check config, connectivity, and readiness (ANCC schema).
