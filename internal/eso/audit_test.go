@@ -533,6 +533,51 @@ func TestAudit_SeverityMapping(t *testing.T) {
 	}
 }
 
+func TestAudit_FindingsOrderedBySeverityThenSource(t *testing.T) {
+	// One ES with two data entries: one path missing (error) and one with placeholder (error).
+	// Plus TargetNameMissing (warning). Expect errors before warning, and within errors by line.
+	es := &ExternalSecret{
+		Name:              "my-es",
+		TargetNameMissing: true,
+		SourceFile:        "b-file.yml",
+		Data: []DataEntry{
+			{SecretKey: "K2", RemoteRefKey: "secret/docflow/<ENV>/db", RemoteRefProperty: "p", SourceLine: 20},
+			{SecretKey: "K1", RemoteRefKey: "secret/docflow/<ENV>/app", RemoteRefProperty: "p", SourceLine: 10},
+		},
+	}
+	findings, err := Audit(context.Background(), AuditInput{ExternalSecrets: []*ExternalSecret{es}})
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if len(findings) < 2 {
+		t.Fatalf("expected at least 2 findings, got %d", len(findings))
+	}
+
+	// All errors must come before all warnings and infos
+	sawNonError := false
+	for _, f := range findings {
+		if f.Severity != SeverityError {
+			sawNonError = true
+		}
+		if sawNonError && f.Severity == SeverityError {
+			t.Error("error finding appeared after a non-error finding — ordering violated")
+			break
+		}
+	}
+
+	// Within errors, lines should be ascending for same file
+	var prevLine int
+	for _, f := range findings {
+		if f.Severity != SeverityError || f.Source.File != "b-file.yml" {
+			continue
+		}
+		if prevLine > 0 && f.Source.Line < prevLine {
+			t.Errorf("error findings not sorted by line: line %d appeared after line %d", f.Source.Line, prevLine)
+		}
+		prevLine = f.Source.Line
+	}
+}
+
 func TestAudit_RefreshIntervalAggressive(t *testing.T) {
 	es := &ExternalSecret{
 		Name: "my-es", Namespace: "default", TargetName: "my-secret",
@@ -667,8 +712,8 @@ func TestAudit_ReloaderTargetMissing(t *testing.T) {
 	if f.SecretName != "ghost-secret" {
 		t.Errorf("finding SecretName: got %q, want %q", f.SecretName, "ghost-secret")
 	}
-	if f.Severity != SeverityWarning {
-		t.Errorf("severity: got %q, want warning", f.Severity)
+	if f.Severity != SeverityError {
+		t.Errorf("severity: got %q, want error", f.Severity)
 	}
 	if f.Source.Line != 3 {
 		t.Errorf("source line: got %d, want 3", f.Source.Line)

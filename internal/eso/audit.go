@@ -249,7 +249,7 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 			if !producedTargets[ref.SecretName] {
 				findings = append(findings, Finding{
 					Class:       ESOReloaderTargetMissing,
-					Severity:    SeverityWarning,
+					Severity:    SeverityError,
 					Message:     fmt.Sprintf("Reloader annotation references K8s Secret %q but no ExternalSecret produces that target", ref.SecretName),
 					SecretName:  ref.SecretName,
 					Source:      SourceLocation{File: ref.SourceFile, Line: ref.SourceLine},
@@ -259,7 +259,28 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 		}
 	}
 
+	sortFindings(findings)
 	return findings, nil
+}
+
+// sortFindings orders findings: errors first, then warnings, then info;
+// within each severity group by source file then line number.
+func sortFindings(findings []Finding) {
+	severityOrder := map[Severity]int{
+		SeverityError:   0,
+		SeverityWarning: 1,
+		SeverityInfo:    2,
+	}
+	sort.SliceStable(findings, func(i, j int) bool {
+		si, sj := severityOrder[findings[i].Severity], severityOrder[findings[j].Severity]
+		if si != sj {
+			return si < sj
+		}
+		if findings[i].Source.File != findings[j].Source.File {
+			return findings[i].Source.File < findings[j].Source.File
+		}
+		return findings[i].Source.Line < findings[j].Source.Line
+	})
 }
 
 // runVaultChecks emits ESO_VAULT_PATH_MISSING, ESO_VAULT_PROPERTY_MISSING, and
