@@ -142,3 +142,16 @@ func TestIsTTY(t *testing.T) {
 	}
 	// Just ensure it doesn't panic
 }
+
+func TestNew_ReturnsNonNil(t *testing.T) {
+	r := New()
+	if r == nil {
+		t.Error("New should never return nil")
+	}
+	// In CI/test context, pastewatch-cli is absent so we get FallbackRedactor.
+	// Smoke-test it by redacting a safe value.
+	out := r.Redact("safe-plain-value")
+	if out == "" {
+		t.Error("Redact of a safe value should return non-empty")
+	}
+}

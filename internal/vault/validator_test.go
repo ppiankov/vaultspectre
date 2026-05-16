@@ -397,3 +397,222 @@ func TestExtractProperties_Nil(t *testing.T) {
 		t.Error("expected nil for secret with nil Data")
 	}
 }
+
+// --- ValidatePath tests ---
+
+func TestValidatePath_OKKVv1(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/mykey": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv1(w, map[string]interface{}{"password": "s3cr3t"})
+		},
+	})
+	defer srv.Close()
+
+	status, err := v.ValidatePath("secret/mykey")
+	if err != nil {
+		t.Fatalf("ValidatePath: %v", err)
+	}
+	if status != "ok" {
+		t.Errorf("got %q, want %q", status, "ok")
+	}
+}
+
+func TestValidatePath_OKKVv2(t *testing.T) {
+	// Path given in KV v1 form; data lives at the KV v2 /data/ path
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/kv/data/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv2(w, map[string]interface{}{"password": "s3cr3t"})
+		},
+	})
+	defer srv.Close()
+
+	status, err := v.ValidatePath("kv/prod/app")
+	if err != nil {
+		t.Fatalf("ValidatePath: %v", err)
+	}
+	if status != "ok" {
+		t.Errorf("got %q, want %q", status, "ok")
+	}
+}
+
+func TestValidatePath_Missing(t *testing.T) {
+	v, srv := newTestValidator(t, nil) // all 404
+	defer srv.Close()
+
+	status, err := v.ValidatePath("secret/totally/missing")
+	if err != nil {
+		t.Fatalf("ValidatePath: %v", err)
+	}
+	if status != "missing" {
+		t.Errorf("got %q, want %q", status, "missing")
+	}
+}
+
+func TestValidatePath_AccessDenied(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultPermissionDenied(w)
+		},
+	})
+	defer srv.Close()
+
+	status, err := v.ValidatePath("secret/prod/app")
+	if err != nil {
+		t.Fatalf("ValidatePath: %v", err)
+	}
+	if status != "access_denied" {
+		t.Errorf("got %q, want %q", status, "access_denied")
+	}
+}
+
+// --- NewValidatorWithAudit ---
+
+func TestNewValidatorWithAudit_NonNil(t *testing.T) {
+	cfg := vaultapi.DefaultConfig()
+	raw, err := vaultapi.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("vault client: %v", err)
+	}
+	c := &Client{client: raw, timeout: 5 * time.Second}
+	v := NewValidatorWithAudit(c, nil)
+	if v == nil {
+		t.Error("NewValidatorWithAudit returned nil")
+	}
+}
+
+// --- ListProperties tests ---
+
+func TestListProperties_KVv2(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/data/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv2(w, map[string]interface{}{"password": "s3cr3t", "username": "admin"})
+		},
+	})
+	defer srv.Close()
+
+	keys, err := v.ListProperties("secret/prod/app")
+	if err != nil {
+		t.Fatalf("ListProperties: %v", err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("expected 2 keys, got %d: %v", len(keys), keys)
+	}
+	keySet := map[string]bool{}
+	for _, k := range keys {
+		keySet[k] = true
+	}
+	if !keySet["password"] || !keySet["username"] {
+		t.Errorf("expected password+username, got %v", keys)
+	}
+}
+
+func TestListProperties_KVv1(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultKVv1(w, map[string]interface{}{"token": "abc123"})
+		},
+	})
+	defer srv.Close()
+
+	keys, err := v.ListProperties("secret/prod/app")
+	if err != nil {
+		t.Fatalf("ListProperties: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "token" {
+		t.Errorf("expected [token], got %v", keys)
+	}
+}
+
+func TestListProperties_MissingPath(t *testing.T) {
+	v, srv := newTestValidator(t, nil)
+	defer srv.Close()
+
+	keys, err := v.ListProperties("secret/totally/missing")
+	if err != nil {
+		t.Fatalf("ListProperties: %v", err)
+	}
+	if keys != nil {
+		t.Errorf("expected nil for missing path, got %v", keys)
+	}
+}
+
+func TestListProperties_PermissionDenied(t *testing.T) {
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			writeVaultPermissionDenied(w)
+		},
+	})
+	defer srv.Close()
+
+	keys, err := v.ListProperties("secret/prod/app")
+	if err != nil {
+		t.Fatalf("ListProperties: unexpected error: %v", err)
+	}
+	if keys != nil {
+		t.Errorf("expected nil for permission-denied path, got %v", keys)
+	}
+}
+
+// --- CheckStaleness tests ---
+
+func TestCheckStaleness_NoData(t *testing.T) {
+	v, srv := newTestValidator(t, nil)
+	defer srv.Close()
+
+	// Non-KV-v2 path → no metadata; no audit analyzer → error
+	_, _, err := v.CheckStaleness("secret/mykey", 90)
+	if err == nil {
+		t.Error("expected error when no staleness data is available")
+	}
+}
+
+func TestCheckStaleness_FreshMetadata(t *testing.T) {
+	recentTime := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/metadata/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"updated_time": recentTime,
+					"version":      1,
+				},
+			})
+		},
+	})
+	defer srv.Close()
+
+	isStale, timeStr, err := v.CheckStaleness("secret/data/prod/app", 90)
+	if err != nil {
+		t.Fatalf("CheckStaleness: %v", err)
+	}
+	if isStale {
+		t.Error("expected not stale for secret updated 1 day ago with 90-day threshold")
+	}
+	if timeStr == "" {
+		t.Error("expected non-empty time string")
+	}
+}
+
+func TestCheckStaleness_StaleMetadata(t *testing.T) {
+	staleTime := time.Now().Add(-100 * 24 * time.Hour).Format(time.RFC3339)
+	v, srv := newTestValidator(t, map[string]http.HandlerFunc{
+		"/v1/secret/metadata/prod/app": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"updated_time": staleTime,
+					"version":      1,
+				},
+			})
+		},
+	})
+	defer srv.Close()
+
+	isStale, _, err := v.CheckStaleness("secret/data/prod/app", 90)
+	if err != nil {
+		t.Fatalf("CheckStaleness: %v", err)
+	}
+	if !isStale {
+		t.Error("expected stale for secret updated 100 days ago with 90-day threshold")
+	}
+}
