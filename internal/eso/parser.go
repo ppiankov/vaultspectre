@@ -105,6 +105,13 @@ func nodeToExternalSecret(root *yaml.Node, sourcePath string) (*ExternalSecret, 
 
 	es.RefreshInterval = nodeString(mappingGet(spec, "refreshInterval"))
 
+	provider := mappingGet(spec, "provider")
+	if provider != nil {
+		if vaultProv := mappingGet(provider, "vault"); vaultProv != nil {
+			es.VaultMount = nodeString(mappingGet(vaultProv, "path"))
+		}
+	}
+
 	ssRef := mappingGet(spec, "secretStoreRef")
 	if ssRef != nil {
 		es.SecretStoreRef = SecretStoreRef{

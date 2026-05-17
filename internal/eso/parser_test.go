@@ -330,6 +330,65 @@ spec:
 	}
 }
 
+func TestParseReader_VaultMountExtracted(t *testing.T) {
+	yaml := `
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: with-vault-mount
+spec:
+  provider:
+    vault:
+      server: https://vault.example.com
+      path: kv
+      version: v2
+  data:
+    - secretKey: DB_PASSWORD
+      remoteRef:
+        key: docflow/infra/test/infra-db
+        property: password
+`
+	results, err := parseReader(strings.NewReader(yaml), "mount.yml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	es := results[0]
+	if es.VaultMount != "kv" {
+		t.Errorf("VaultMount: got %q, want %q", es.VaultMount, "kv")
+	}
+	if es.Data[0].RemoteRefKey != "docflow/infra/test/infra-db" {
+		t.Errorf("RemoteRefKey: got %q", es.Data[0].RemoteRefKey)
+	}
+}
+
+func TestParseReader_NoVaultMount(t *testing.T) {
+	yaml := `
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: no-provider
+spec:
+  secretStoreRef:
+    name: my-store
+    kind: SecretStore
+  data:
+    - secretKey: KEY
+      remoteRef:
+        key: secret/path
+        property: value
+`
+	results, err := parseReader(strings.NewReader(yaml), "noprov.yml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results[0].VaultMount != "" {
+		t.Errorf("VaultMount should be empty when provider absent, got %q", results[0].VaultMount)
+	}
+}
+
 // findByName returns the first ExternalSecret with the given metadata.name, or nil.
 func findByName(all []*ExternalSecret, name string) *ExternalSecret {
 	for _, es := range all {

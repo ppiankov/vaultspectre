@@ -4,6 +4,7 @@ package eso
 type ExternalSecret struct {
 	Name              string
 	Namespace         string
+	VaultMount        string // spec.provider.vault.path — the KV mount (e.g. "kv")
 	TargetName        string
 	TargetNameMissing bool // true when spec.target.name is absent; ESO defaults to metadata.name
 	RefreshInterval   string

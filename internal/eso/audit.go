@@ -197,7 +197,7 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 			if strings.Contains(d.RemoteRefKey, placeholder) {
 				continue
 			}
-			src := vaultSource{d.RemoteRefKey, d.RemoteRefProperty}
+			src := vaultSource{vaultPath(es.VaultMount, d.RemoteRefKey), d.RemoteRefProperty}
 			if dupSourceTargets[src] == nil {
 				dupSourceTargets[src] = make(map[string]bool)
 			}
@@ -298,13 +298,14 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 				continue // placeholder unsubstituted; skip vault check
 			}
 
-			pp := pathProp{d.RemoteRefKey, d.RemoteRefProperty}
+			fullPath := vaultPath(es.VaultMount, d.RemoteRefKey)
+			pp := pathProp{fullPath, d.RemoteRefProperty}
 			status, seen := checked[pp]
 			if !seen {
 				if ctx.Err() != nil {
 					return findings, ctx.Err()
 				}
-				status = in.Validator.ValidatePathProperty(ctx, d.RemoteRefKey, d.RemoteRefProperty)
+				status = in.Validator.ValidatePathProperty(ctx, fullPath, d.RemoteRefProperty)
 				checked[pp] = status
 			}
 
@@ -313,25 +314,25 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 				findings = append(findings, Finding{
 					Class:       ESOVaultPathMissing,
 					Severity:    SeverityError,
-					Message:     fmt.Sprintf("ExternalSecret %q: Vault path %q does not exist", es.Name, d.RemoteRefKey),
-					Path:        d.RemoteRefKey,
+					Message:     fmt.Sprintf("ExternalSecret %q: Vault path %q does not exist", es.Name, fullPath),
+					Path:        fullPath,
 					SecretKey:   d.SecretKey,
 					Source:      SourceLocation{File: es.SourceFile, Line: d.SourceLine},
-					Remediation: fmt.Sprintf("Create the Vault secret at path %q or update remoteRef.key", d.RemoteRefKey),
+					Remediation: fmt.Sprintf("Create the Vault secret at path %q or update remoteRef.key", fullPath),
 				})
 			case vault.PropertyMissing:
 				findings = append(findings, Finding{
 					Class:       ESOVaultPropertyMissing,
 					Severity:    SeverityError,
-					Message:     fmt.Sprintf("ExternalSecret %q: property %q not found at Vault path %q", es.Name, d.RemoteRefProperty, d.RemoteRefKey),
-					Path:        d.RemoteRefKey,
+					Message:     fmt.Sprintf("ExternalSecret %q: property %q not found at Vault path %q", es.Name, d.RemoteRefProperty, fullPath),
+					Path:        fullPath,
 					Property:    d.RemoteRefProperty,
 					SecretKey:   d.SecretKey,
 					Source:      SourceLocation{File: es.SourceFile, Line: d.SourceLine},
-					Remediation: fmt.Sprintf("Add property %q to Vault path %q", d.RemoteRefProperty, d.RemoteRefKey),
+					Remediation: fmt.Sprintf("Add property %q to Vault path %q", d.RemoteRefProperty, fullPath),
 				})
 			case vault.PropertyNetworkError:
-				return findings, fmt.Errorf("vault network error checking %q: retry exhausted", d.RemoteRefKey)
+				return findings, fmt.Errorf("vault network error checking %q: retry exhausted", fullPath)
 			}
 		}
 
@@ -339,7 +340,8 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 			if strings.Contains(df.RemoteRefKey, placeholder) {
 				continue
 			}
-			pp := pathProp{df.RemoteRefKey, ""}
+			fullPath := vaultPath(es.VaultMount, df.RemoteRefKey)
+			pp := pathProp{fullPath, ""}
 			if _, seen := checked[pp]; seen {
 				continue
 			}
@@ -347,19 +349,19 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 				return findings, ctx.Err()
 			}
 			// DataFrom only needs path existence check.
-			status, err := in.Validator.ValidatePath(df.RemoteRefKey)
+			status, err := in.Validator.ValidatePath(fullPath)
 			checked[pp] = vault.PropertyStatus(status)
 			if err != nil {
-				return findings, fmt.Errorf("vault error checking %q: %w", df.RemoteRefKey, err)
+				return findings, fmt.Errorf("vault error checking %q: %w", fullPath, err)
 			}
 			if status == "missing" {
 				findings = append(findings, Finding{
 					Class:       ESOVaultPathMissing,
 					Severity:    SeverityError,
-					Message:     fmt.Sprintf("ExternalSecret %q: dataFrom Vault path %q does not exist", es.Name, df.RemoteRefKey),
-					Path:        df.RemoteRefKey,
+					Message:     fmt.Sprintf("ExternalSecret %q: dataFrom Vault path %q does not exist", es.Name, fullPath),
+					Path:        fullPath,
 					Source:      SourceLocation{File: es.SourceFile, Line: df.SourceLine},
-					Remediation: fmt.Sprintf("Create the Vault secret at path %q or remove the dataFrom entry", df.RemoteRefKey),
+					Remediation: fmt.Sprintf("Create the Vault secret at path %q or remove the dataFrom entry", fullPath),
 				})
 			}
 		}
@@ -405,6 +407,16 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 	}
 
 	return findings, nil
+}
+
+// vaultPath prepends the KV mount to a remoteRef key when the ExternalSecret
+// declares spec.provider.vault.path. Without this, paths like
+// "docflow/infra/test/infra-db" would be checked bare instead of "kv/docflow/infra/test/infra-db".
+func vaultPath(mount, key string) string {
+	if mount != "" {
+		return mount + "/" + key
+	}
+	return key
 }
 
 // runK8sChecks emits ESO_K8S_KEY_UNUSED and ESO_K8S_KEY_MISSING findings.
