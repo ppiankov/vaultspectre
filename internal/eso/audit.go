@@ -372,16 +372,17 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 		return findings, nil
 	}
 	// Build map of pulled properties per path.
-	pulledProps := make(map[string]map[string]bool) // path → set of pulled property names
+	pulledProps := make(map[string]map[string]bool) // effective path → set of pulled property names
 	for _, es := range in.ExternalSecrets {
 		for _, d := range es.Data {
 			if d.RemoteRefProperty == "" {
 				continue
 			}
-			if pulledProps[d.RemoteRefKey] == nil {
-				pulledProps[d.RemoteRefKey] = make(map[string]bool)
+			fullPath := vaultPath(es.VaultMount, d.RemoteRefKey)
+			if pulledProps[fullPath] == nil {
+				pulledProps[fullPath] = make(map[string]bool)
 			}
-			pulledProps[d.RemoteRefKey][d.RemoteRefProperty] = true
+			pulledProps[fullPath][d.RemoteRefProperty] = true
 		}
 	}
 	for path, pulled := range pulledProps {

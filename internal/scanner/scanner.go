@@ -156,6 +156,11 @@ func (s *Scanner) scanFile(path string) ([]Reference, error) {
 			for _, match := range matches {
 				if len(match) > 1 {
 					secretPath := cleanSecretPath(match[1])
+					// terraform_vault_kv_secret_v2 captures mount and name separately;
+					// combine them into a single path before validation.
+					if pattern.Name == "terraform_vault_kv_secret_v2" && len(match) > 2 && match[2] != "" {
+						secretPath = cleanSecretPath(match[1] + "/" + match[2])
+					}
 					if isValidVaultPath(secretPath) {
 						relPath, _ := filepath.Rel(s.repoPath, path)
 						ref := Reference{
