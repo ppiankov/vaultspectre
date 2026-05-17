@@ -19,6 +19,7 @@ var (
 	esoManifests      []string
 	esoEnvValue       string
 	esoVaultListMount string
+	esoVaultMount     string
 	esoFailOnFindings bool
 )
 
@@ -69,6 +70,7 @@ func init() {
 	esoCmd.Flags().StringArrayVar(&esoManifests, "manifests", []string{}, "K8s manifest paths/dirs for consumer scan (repeatable)")
 	esoCmd.Flags().StringVar(&esoEnvValue, "env", "", "Substitute this value for <ENV> placeholder in Vault paths")
 	esoCmd.Flags().StringVar(&esoVaultListMount, "vault-list-mount", "", "Vault mount to list for orphaned property detection (e.g. secret)")
+	esoCmd.Flags().StringVar(&esoVaultMount, "vault-mount", "", "KV mount prefix for ExternalSecrets that use secretStoreRef (e.g. kv)")
 	esoCmd.Flags().StringVar(&vaultAddr, "vault-addr", os.Getenv("VAULT_ADDR"), "Vault server address")
 	esoCmd.Flags().StringVar(&vaultToken, "token", os.Getenv("VAULT_TOKEN"), "Vault authentication token")
 	esoCmd.Flags().StringVar(&authMethod, "auth-method", "token", "Auth method: token, approle, kubernetes")
@@ -135,10 +137,11 @@ func runEso(_ *cobra.Command, _ []string) error {
 	// 5. Run audit
 	ctx := context.Background()
 	findings, auditErr := eso.Audit(ctx, eso.AuditInput{
-		ExternalSecrets: secrets,
-		Consumers:       consumers,
-		Validator:       validator,
-		VaultListMount:  esoVaultListMount,
+		ExternalSecrets:   secrets,
+		Consumers:         consumers,
+		Validator:         validator,
+		VaultListMount:    esoVaultListMount,
+		DefaultVaultMount: esoVaultMount,
 		// When --env was set, <ENV> is already substituted; use a non-matching sentinel
 		// so the placeholder check doesn't fire on unrelated angle-bracket tokens.
 		EnvPlaceholder: placeholderForAudit(),

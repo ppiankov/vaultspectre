@@ -58,13 +58,23 @@ type Finding struct {
 
 // AuditInput bundles the three parsed source inputs and configuration for Audit.
 type AuditInput struct {
-	ExternalSecrets []*ExternalSecret
-	Consumers       *ConsumerScanResult // nil skips K8s consumer cross-checks
-	Validator       *vault.Validator    // nil skips all Vault-dependent checks
-	VaultListMount  string              // non-empty enables ESO_VAULT_ORPHANED_PROPERTY
-	EnvPlaceholder  string              // configurable placeholder; defaults to "<ENV>"
+	ExternalSecrets   []*ExternalSecret
+	Consumers         *ConsumerScanResult // nil skips K8s consumer cross-checks
+	Validator         *vault.Validator    // nil skips all Vault-dependent checks
+	VaultListMount    string              // non-empty enables ESO_VAULT_ORPHANED_PROPERTY
+	DefaultVaultMount string              // fallback mount for ExternalSecrets that use secretStoreRef (no inline provider)
+	EnvPlaceholder    string              // configurable placeholder; defaults to "<ENV>"
 	// MaxRefreshIntervalSeconds: WO-66 extension point, unused here
 	MaxRefreshIntervalSeconds int
+}
+
+// effectiveMount returns the ExternalSecret's inline VaultMount, falling back to
+// AuditInput.DefaultVaultMount for ExternalSecrets that delegate to a SecretStore.
+func effectiveMount(es *ExternalSecret, defaultMount string) string {
+	if es.VaultMount != "" {
+		return es.VaultMount
+	}
+	return defaultMount
 }
 
 // Audit cross-references ExternalSecrets, Vault state, and K8s consumers and returns findings.
@@ -197,7 +207,7 @@ func Audit(ctx context.Context, in AuditInput) ([]Finding, error) {
 			if strings.Contains(d.RemoteRefKey, placeholder) {
 				continue
 			}
-			src := vaultSource{vaultPath(es.VaultMount, d.RemoteRefKey), d.RemoteRefProperty}
+			src := vaultSource{vaultPath(effectiveMount(es, in.DefaultVaultMount), d.RemoteRefKey), d.RemoteRefProperty}
 			if dupSourceTargets[src] == nil {
 				dupSourceTargets[src] = make(map[string]bool)
 			}
@@ -298,7 +308,7 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 				continue // placeholder unsubstituted; skip vault check
 			}
 
-			fullPath := vaultPath(es.VaultMount, d.RemoteRefKey)
+			fullPath := vaultPath(effectiveMount(es, in.DefaultVaultMount), d.RemoteRefKey)
 			pp := pathProp{fullPath, d.RemoteRefProperty}
 			status, seen := checked[pp]
 			if !seen {
@@ -340,7 +350,7 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 			if strings.Contains(df.RemoteRefKey, placeholder) {
 				continue
 			}
-			fullPath := vaultPath(es.VaultMount, df.RemoteRefKey)
+			fullPath := vaultPath(effectiveMount(es, in.DefaultVaultMount), df.RemoteRefKey)
 			pp := pathProp{fullPath, ""}
 			if _, seen := checked[pp]; seen {
 				continue
@@ -378,7 +388,7 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 			if d.RemoteRefProperty == "" {
 				continue
 			}
-			fullPath := vaultPath(es.VaultMount, d.RemoteRefKey)
+			fullPath := vaultPath(effectiveMount(es, in.DefaultVaultMount), d.RemoteRefKey)
 			if pulledProps[fullPath] == nil {
 				pulledProps[fullPath] = make(map[string]bool)
 			}
@@ -410,9 +420,10 @@ func runVaultChecks(ctx context.Context, in AuditInput, placeholder string) ([]F
 	return findings, nil
 }
 
-// vaultPath prepends the KV mount to a remoteRef key when the ExternalSecret
-// declares spec.provider.vault.path. Without this, paths like
-// "docflow/infra/test/infra-db" would be checked bare instead of "kv/docflow/infra/test/infra-db".
+// vaultPath prepends the KV mount to a remoteRef key. mount is the ExternalSecret's
+// inline spec.provider.vault.path; if empty, the caller should pass DefaultVaultMount instead.
+// Without a mount, paths like "docflow/infra/test/infra-db" would be checked bare
+// instead of "kv/docflow/infra/test/infra-db".
 func vaultPath(mount, key string) string {
 	if mount != "" {
 		return mount + "/" + key
