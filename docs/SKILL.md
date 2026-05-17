@@ -272,6 +272,7 @@ Audit ExternalSecret CRD manifests against live Vault state and K8s/Helm consume
 - `--helm-values path` — Helm values files to scan for consumers (repeatable)
 - `--manifests path` — K8s manifest paths or directories for consumer scan (repeatable)
 - `--env VALUE` — substitute `<ENV>` placeholder in Vault `remoteRef.key` paths
+- `--vault-mount mount` — KV mount prefix for ExternalSecrets that use `secretStoreRef` (e.g. `kv`); required when `spec.provider.vault.path` is in a separate `SecretStore`/`ClusterSecretStore` rather than inline
 - `--vault-list-mount mount` — Vault mount to list for orphaned property detection (e.g. `secret`)
 - `--vault-addr` — Vault server address
 - `--token` — Vault authentication token

@@ -90,6 +90,8 @@ vaultspectre eso --eso-dir ./manifests --vault-addr $VAULT_ADDR --token $VAULT_T
 | `ESO_ENV_PLACEHOLDER_UNSUBSTITUTED` | error | Literal `<ENV>` remains in `remoteRef.key` (use `--env` to substitute) |
 | `ESO_RELOADER_TARGET_MISSING` | error | Stakater Reloader annotation references a Secret name no ExternalSecret produces |
 | `ESO_REFRESH_INTERVAL_AGGRESSIVE` | warning | `refreshInterval` is below threshold (configured in API via `MaxRefreshIntervalSeconds`) |
+
+**Note on `--vault-mount`:** Most ExternalSecrets delegate to a `SecretStore`/`ClusterSecretStore` where the KV mount is configured. Since vaultspectre doesn't read the store resource, pass `--vault-mount kv` (or whichever mount your store uses) so paths like `docflow/infra/prod/db` are checked as `kv/docflow/infra/prod/db`.
 | `ESO_VAULT_DUPLICATE_SOURCE` | warning | Same Vault path+property pulled into multiple K8s Secrets |
 
 ## Exit codes

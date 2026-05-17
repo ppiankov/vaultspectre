@@ -207,6 +207,7 @@ vaultspectre eso --eso-dir ./manifests --vault-addr $VAULT_ADDR --token $VAULT_T
 | `--helm-values` | Helm values files to scan for consumers (repeatable) |
 | `--manifests` | K8s manifest paths/dirs for consumer scan (repeatable) |
 | `--env VALUE` | Substitute `<ENV>` placeholder in Vault `remoteRef.key` paths |
+| `--vault-mount` | KV mount prefix when ExternalSecrets use `secretStoreRef` (e.g. `kv`) |
 | `--vault-list-mount` | Vault mount for orphaned property detection (e.g. `secret`) |
 | `--fail-on-findings` | Exit 6 if any error-severity finding present |
 | `--format` | Output: `text`, `json`, `sarif`, `spectrehub` |
