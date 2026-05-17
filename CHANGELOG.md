@@ -5,6 +5,14 @@ All notable changes to VaultSpectre will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-05-17
+
+### Added
+- `--vault-mount` flag: specifies the KV mount prefix for ExternalSecrets that delegate to a `SecretStore`/`ClusterSecretStore` (the common pattern where `spec.provider.vault.path` lives in a separate store resource, not inline in the ExternalSecret)
+
+### Fixed
+- ESO: `spec.provider.vault.path` read from inline provider was never used as mount prefix — now `effectiveMount()` falls back to `--vault-mount` when the ExternalSecret has no inline provider
+
 ## [0.6.1] - 2026-05-17
 
 ### Fixed
