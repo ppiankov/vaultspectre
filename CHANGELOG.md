@@ -5,6 +5,13 @@ All notable changes to VaultSpectre will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-17
+
+### Fixed
+- ESO: `spec.provider.vault.path` (KV mount) now prepended to `remoteRef.key` before all Vault lookups — bare paths like `docflow/infra/test/infra-db` were being checked instead of `kv/docflow/infra/test/infra-db`, causing false `ESO_VAULT_PATH_MISSING` on every entry
+- ESO: `ESO_VAULT_ORPHANED_PROPERTY` check (`--vault-list-mount`) used bare key instead of effective mount-prefixed path when calling `ListProperties`
+- Scanner: `terraform_vault_kv_secret_v2` pattern extracted only the mount (e.g. `kv`) as the secret path instead of combining mount + name (e.g. `kv/prod/app`)
+
 ## [0.6.0] - 2026-05-16
 
 ### Added
